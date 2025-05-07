@@ -12,6 +12,10 @@ const data = [
 export default function RevisarScreen() {
   const router = useRouter();
 
+  const handlePress = (familia: string) => {
+    router.push({ pathname: '/nevera', params: { familia } });
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       {/* Encabezado */}
@@ -28,28 +32,30 @@ export default function RevisarScreen() {
 
       {/* Lista de productos */}
       {data.map((item, index) => (
-        <View key={index} style={styles.productContainer}>
-          <View style={styles.productRow}>
-            {/* Imagen y nombre del pasillo */}
-            <View style={styles.productInfo}>
-              <Image source={item.image} style={styles.productImage} />
-              <Text style={styles.productName}>{item.name}</Text>
-            </View>
-            {/* Indicadores a la derecha */}
-            <View style={styles.indicatorGroup}>
-              <View style={styles.indicatorColumn}>
-                <View style={styles.indicatorWrapper}>
-                  <View style={[styles.statusCircle, { backgroundColor: 'red' }]} />
-                  <Text style={styles.statusText}>6 caducados</Text>
+        <TouchableOpacity key={index} onPress={() => handlePress(item.name)}>
+          <View key={index} style={styles.productContainer}>
+            <View style={styles.productRow}>
+              {/* Imagen y nombre del pasillo */}
+                <View style={styles.productInfo}>
+                  <Image source={item.image} style={styles.productImage} />
+                  <Text style={styles.productName}>{item.name}</Text>
                 </View>
-                <View style={styles.indicatorWrapper}>
-                  <View style={[styles.statusCircle, { backgroundColor: 'orange' }]} />
-                  <Text style={styles.statusText}>12 retirar</Text>
+              {/* Indicadores a la derecha */}
+              <View style={styles.indicatorGroup}>
+                <View style={styles.indicatorColumn}>
+                  <View style={styles.indicatorWrapper}>
+                    <View style={[styles.statusCircle, { backgroundColor: 'red' }]} />
+                    <Text style={styles.statusText}>6 caducados</Text>
+                  </View>
+                  <View style={styles.indicatorWrapper}>
+                    <View style={[styles.statusCircle, { backgroundColor: 'orange' }]} />
+                    <Text style={styles.statusText}>12 retirar</Text>
+                  </View>
                 </View>
               </View>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
       ))}
     </ScrollView>
   );
