@@ -49,9 +49,15 @@ export default function NeveraScreen() {
         <View key={`row-${fila}`} style={styles.row}>
           {tornillosFila.map((t) => (
             <View key={t.id} style={[styles.cell, { flex: 1 }]}>
-              <Text style={styles.codigo}>{t.productoCodigo}</Text>
-              <Text style={styles.nombre}>{t.nombre}</Text>
-              <View style={styles.statusBall} />
+              <Image
+                style={styles.image}
+                source={{ uri: `http://localhost:8080/images/productos/${t.productoCodigo}.png` }}
+              />
+              <View style={styles.textContainer}>
+                <Text style={styles.codigo}>{t.productoCodigo}</Text>
+                <Text style={styles.nombre}>{t.nombre}</Text>
+                <View style={styles.statusBall} />
+              </View>
             </View>
           ))}
         </View>
@@ -86,36 +92,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     width: screenWidth - 40,
     marginBottom: 10,
+    justifyContent: 'center',
   },
   cell: {
+    flexDirection: 'row',           // Imagen a la izquierda, texto a la derecha
+    alignItems: 'center',           // Centrado vertical
+    justifyContent: 'center',       // Centrado horizontal
     marginHorizontal: 4,
-    height: 140,
+    height: 100,
+    flex: 1,
     borderWidth: 1,
     borderColor: '#ccc',
     borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
     backgroundColor: '#eef',
     padding: 10,
   },
   image: {
-    width: 40,
-    height: 40,
-    marginBottom: 6,
+    width: 60,
+    height: 60,
+    resizeMode: 'contain',
+    marginRight: 12,
+  },
+  textContainer: {
+    justifyContent: 'center',
   },
   codigo: {
     fontSize: 14,
     fontWeight: 'bold',
-    textAlign: 'center',
   },
   nombre: {
     fontSize: 14,
-    textAlign: 'center',
-  },
-  retirada: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 4,
   },
   statusBall: {
     width: 14,
