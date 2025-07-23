@@ -1,112 +1,102 @@
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
+import { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 
-export default function HomeScreen() {
+export default function LoginScreen() {
+  const [usuario, setUsuario] = useState('');
+  const [contrasena, setContrasena] = useState('');
   const router = useRouter();
 
+  const handleLogin = async () => {
+    try {
+      const response = await fetch('http://localhost:8080/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: usuario, password: contrasena }),
+      });
+
+      if (response.ok) {
+        await AsyncStorage.setItem('tiendaId', usuario);
+        router.push('/home'); // Ajusta esta ruta según la siguiente pantalla tras login
+      } else {
+        Alert.alert('Error', 'Usuario o contraseña incorrectos');
+      }
+    } catch (error) {
+      console.error('Error en el login', error);
+      Alert.alert('Error', 'No se pudo conectar con el servidor');
+    }
+  };
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Encabezado */}
-      <View style={styles.header}>
-        <Image source={require('@/assets/images/calendar-alert.png')} style={styles.headerIcon} />
-        <Text style={styles.versionText}>3718 | PROD | v1300</Text>
-      </View>
+    <View style={styles.container}>
+      <Image source={require('@/assets/images/logo.png')} style={styles.logo} />
 
-      {/* Título */}
-      <Text style={styles.title}>Tienda 3718</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Usuario"
+        value={usuario}
+        onChangeText={setUsuario}
+      />
 
-      {/* Sección de tareas */}
-      <Text style={styles.sectionLabel}>Funciones</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Contraseña"
+        value={contrasena}
+        onChangeText={setContrasena}
+        secureTextEntry
+      />
 
-      <TouchableOpacity style={styles.row} onPress={() => router.push('/revisar')}>
-        <Image source={require('@/assets/images/search.png')} style={styles.icon} />
-        <Text style={styles.rowText}>Revisar</Text>
+      <TouchableOpacity style={styles.button} onPress={handleLogin}>
+        <Text style={styles.buttonText}>Iniciar sesión</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.row}>
-        <Image source={require('@/assets/images/settings.png')} style={styles.icon} />
-        <Text style={styles.rowText}>Ajustes</Text>
-      </TouchableOpacity>
-
-      {/* Sección EAC */}
-      <Text style={styles.sectionLabel}>EAC</Text>
-
-      <View style={styles.statusRow}>
-        <View style={[styles.statusCircle, { backgroundColor: 'red' }]} />
-        <Text style={styles.statusText}>6 productos con caducados</Text>
-      </View>
-
-      <View style={styles.statusRow}>
-        <View style={[styles.statusCircle, { backgroundColor: 'orange' }]} />
-        <Text style={styles.statusText}>12 productos próximos a retirar</Text>
-      </View>
-
-      <View style={styles.statusRow}>
-        <View style={[styles.statusCircle, { backgroundColor: 'green' }]} />
-        <Text style={styles.statusText}>200 productos controlados</Text>
-      </View>
-    </ScrollView>
+      <Text style={styles.link}>
+        Si no sabes tu usuario o contraseña{' '}
+        <Text style={styles.linkAction}>pulsa aquí</Text>
+      </Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
+    padding: 30,
     backgroundColor: '#fff',
+    flex: 1,
+    justifyContent: 'center',
   },
-  header: {
+  logo: {
+    width: 120,
+    height: 120,
+    alignSelf: 'center',
+    marginBottom: 40,
+  },
+  input: {
+    height: 45,
+    borderRadius: 6,
+    backgroundColor: '#f2f2f2',
+    paddingHorizontal: 15,
+    marginBottom: 20,
+  },
+  button: {
+    backgroundColor: '#00994d',
+    paddingVertical: 12,
+    borderRadius: 6,
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 25,
   },
-  headerIcon: {
-    width: 50,
-    height: 50,
-    marginBottom: 5,
+  buttonText: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
-  versionText: {
-    fontSize: 12,
+  link: {
+    textAlign: 'center',
     color: '#555',
   },
-  title: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  sectionLabel: {
-    fontSize: 16,
-    color: 'gray',
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ccc',
-    paddingBottom: 8,
-  },
-  icon: {
-    width: 24,
-    height: 24,
-    marginRight: 12,
-  },
-  rowText: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  statusCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    marginRight: 10,
-  },
-  statusText: {
-    fontSize: 16,
+  linkAction: {
+    color: '#3c6fdc',
   },
 });
