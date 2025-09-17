@@ -42,6 +42,7 @@ const getStatusColor = (fecha: string | null) => {
 
 export default function TornilloDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { tiendaId } = useLocalSearchParams<{ tiendaId: string }>();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -61,7 +62,8 @@ export default function TornilloDetail() {
       // Ajusta esta URL a tu endpoint real:
       // opción A: /api/tornillos/dto/{id}
       // opción B: /api/tornillos/{id}
-      const resT = await fetch(`${API_BASE_URL}/api/tornillos/dto/${id}`);
+      console.log("Cargando tonrillo de tienda ID:", tiendaId, "y código:", id);
+      const resT = await fetch(`${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/producto/${id}`);
       if (!resT.ok) throw new Error(`No se pudo cargar tornillo ${id}`);
       const t: Tornillo = await resT.json();
 
