@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, Dimensions, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useEffect, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
 
@@ -18,12 +18,30 @@ type Tornillo = {
   imagenUrl?: string;
 };
 
+// --- Helpers para estados por fecha ---
+const parseYMD = (s: string) => {
+  const y = Number(s.slice(0, 4));
+  const m = Number(s.slice(5, 7)) - 1;
+  const d = Number(s.slice(8, 10));
+  return new Date(y, m, d);
+};
+
+const getStatusColor = (fecha: string | null) => {
+  if (!fecha) return '#9e9e9e';
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const f = parseYMD(fecha); f.setHours(0, 0, 0, 0);
+  if (f.getTime() > today.getTime()) return '#2ecc71';   // verde
+  if (f.getTime() === today.getTime()) return '#f1c40f'; // amarillo
+  return '#e74c3c';                                      // rojo
+};
+
 export default function NeveraScreen() {
+  const router = useRouter();
   const params = useLocalSearchParams(); // esperamos params.familia
   const [tiendaId, setTiendaId] = useState<string | null>(null);
 
   const [modulos, setModulos] = useState<string[]>([]);
-  const [modIndex, setModIndex] = useState(0); // índice del módulo actual
+  const [modIndex, setModIndex] = useState(0);
   const moduloActual = modulos[modIndex] ?? 'Puerta 1';
 
   const [tornillos, setTornillos] = useState<Tornillo[]>([]);
@@ -46,21 +64,18 @@ export default function NeveraScreen() {
           setLoadingModulos(false);
           return;
         }
-        console.log('Familia: ', params.familia);
         setTiendaId(storedId);
 
         const familia = encodeURIComponent(params.familia.toString());
-        // Carhamos módulos
         const urlModulos = `${API_BASE_URL}/api/tornillos/tienda/${storedId}/familia/${familia}/modulos`;
 
         const res = await fetch(urlModulos);
         if (!res.ok) throw new Error(`Error ${res.status} cargando módulos`);
         const lista: string[] = await res.json();
 
-        // Aseguramos al menos 1 módulo
         const ordered = (lista ?? []).length ? lista : ['Puerta 1'];
         setModulos(ordered);
-        setModIndex(0); // empezamos en el primero
+        setModIndex(0);
       } catch (e: any) {
         setError(e.message ?? 'Error cargando módulos');
       } finally {
@@ -115,17 +130,34 @@ export default function NeveraScreen() {
       grid.push(
         <View key={`row-${fila}`} style={styles.row}>
           {tornillosFila.map((t) => (
-            <View key={t.id} style={[styles.cell, { flex: 1 }]}>
-              <Image
-                style={styles.image}
-                source={{ uri: `${API_BASE_URL}/images/productos/${t.productoCodigo}.png` }}
-              />
-              <View style={styles.textContainer}>
-                <Text style={styles.codigo}>{t.productoCodigo}</Text>
-                <Text style={styles.nombre} numberOfLines={2}>{t.nombre}</Text>
-                <View style={styles.statusBall} />
+            <TouchableOpacity
+              key={t.id}
+              activeOpacity={0.85}
+              style={{ flex: 1 }}
+              onPress={() =>
+                router.push({
+                  pathname: "/tornillo/[id]",
+                  params: {
+                    id: String(t.productoCodigo),
+                    familia: String(params.familia ?? ''),
+                    modulo: t.nombreModulo,
+                    tiendaId: String(tiendaId ?? ''),
+                  },
+                })
+              }
+            >
+              <View style={[styles.cell, { flex: 1 }]}>
+                <Image
+                  style={styles.image}
+                  source={{ uri: `${API_BASE_URL}/images/productos/${t.productoCodigo}.png` }}
+                />
+                <View style={styles.textContainer}>
+                  <Text style={styles.codigo}>{t.productoCodigo}</Text>
+                  <Text style={styles.nombre} numberOfLines={2}>{t.nombre}</Text>
+                  <View style={[styles.statusBall, { backgroundColor: getStatusColor(t.fechaRetirada) }]} />
+                </View>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
       );
@@ -234,7 +266,7 @@ const styles = StyleSheet.create({
   textContainer: {
     height: 60,
     marginLeft: 12,
-    justifyContent: 'space-between', // top código, medio nombre, bottom dot
+    justifyContent: 'space-between',
     alignItems: 'flex-start',
   },  
   codigo: { fontSize: 14, fontWeight: 'bold' },
@@ -243,7 +275,6 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: 'green',
     marginTop: 6,
   },
   error: { color: 'crimson', marginTop: 16 },
