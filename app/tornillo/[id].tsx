@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
 
-type Tornillo = {
+type TornilloDTO = {
+  // Tornillo
   id: number;
   productoCodigo: number;
   tiendaId: number;
@@ -13,14 +14,11 @@ type Tornillo = {
   nombreModulo: string;
   fila: number;
   columna: number;
+  // Producto (del DTO)
   nombre: string;
-};
-
-type Producto = {
-  codigo: number;
-  nombre: string;
-  caducidad_dias: number;
-  imagen_url?: string;
+  imagenUrl?: string | null;
+  familia?: string | null;
+  caducidadDias?: number | null;
 };
 
 // Helpers fecha/estado
@@ -41,43 +39,30 @@ const getStatusColor = (fecha: string | null) => {
 };
 
 export default function TornilloDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const { tiendaId } = useLocalSearchParams<{ tiendaId: string }>();
+  // `id` aquí es el productoCodigo (como venías usando)
+  const { id, tiendaId } = useLocalSearchParams<{ id?: string; tiendaId?: string }>();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [tornillo, setTornillo] = useState<Tornillo | null>(null);
-  const [producto, setProducto] = useState<Producto | null>(null);
+  const [tornillo, setTornillo] = useState<TornilloDTO | null>(null);
   const [fechaCad, setFechaCad] = useState<string>(''); // editable
 
-  // Carga datos
+  // Carga datos (un único fetch al DTO por tienda + producto)
   const fetchData = async () => {
     try {
+      if (!tiendaId || !id) throw new Error('Faltan parámetros (tiendaId / productoCodigo)');
       setLoading(true);
       setError(null);
 
-      // Ajusta esta URL a tu endpoint real:
-      // opción A: /api/tornillos/dto/{id}
-      // opción B: /api/tornillos/{id}
-      console.log("Cargando tonrillo de tienda ID:", tiendaId, "y código:", id);
-      const resT = await fetch(`${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/producto/${id}`);
-      if (!resT.ok) throw new Error(`No se pudo cargar tornillo ${id}`);
-      const t: Tornillo = await resT.json();
+      const res = await fetch(`${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/producto/${id}`);
+      if (!res.ok) throw new Error(`No se pudo cargar tornillo (tienda=${tiendaId}, prod=${id})`);
+      const dto: TornilloDTO = await res.json();
 
-      setTornillo(t);
-      setFechaCad(t.fechaCaducidad ? t.fechaCaducidad.slice(0,10) : toYMD(new Date()));
-
-      // producto por código
-      const resP = await fetch(`${API_BASE_URL}/api/productos/${t.productoCodigo}`);
-      if (resP.ok) {
-        const p: Producto = await resP.json();
-        setProducto(p);
-      } else {
-        setProducto(null);
-      }
+      setTornillo(dto);
+      setFechaCad(dto.fechaCaducidad ? dto.fechaCaducidad.slice(0, 10) : toYMD(new Date()));
     } catch (e: any) {
       setError(e.message ?? 'Error cargando');
     } finally {
@@ -85,7 +70,7 @@ export default function TornilloDetail() {
     }
   };
 
-  useEffect(() => { fetchData(); }, [id]);
+  useEffect(() => { fetchData(); }, [id, tiendaId]);
 
   const statusColor = useMemo(() => getStatusColor(fechaCad), [fechaCad]);
   const rDia = useMemo(() => {
@@ -108,8 +93,6 @@ export default function TornilloDetail() {
       setSaving(true);
       setError(null);
 
-      // Ajusta al endpoint de tu backend (PUT/PATCH)
-      // Body mínimo: { "fechaCaducidad": "YYYY-MM-DD" }
       const res = await fetch(`${API_BASE_URL}/api/tornillos/${tornillo.id}/fecha-caducidad`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -117,7 +100,7 @@ export default function TornilloDetail() {
       });
       if (!res.ok) throw new Error(`Error ${res.status} guardando fecha`);
 
-      // refresca tornillo (para ver nueva fecha_retirada del trigger)
+      // refresca para ver nueva fecha_retirada del trigger
       await fetchData();
       Alert.alert('Guardado', 'Fecha de caducidad actualizada.');
     } catch (e: any) {
@@ -131,6 +114,10 @@ export default function TornilloDetail() {
   if (error) return <View style={styles.container}><Text style={styles.error}>{error}</Text></View>;
   if (!tornillo) return <View style={styles.container}><Text>No encontrado</Text></View>;
 
+  const imgSrc = tornillo.imagenUrl
+    ? `${API_BASE_URL}${tornillo.imagenUrl}` // el backend te manda "/images/productos/39946.png"
+    : `${API_BASE_URL}/images/productos/${tornillo.productoCodigo}.png`;
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.headerRow}>
@@ -140,10 +127,7 @@ export default function TornilloDetail() {
       </View>
 
       <View style={styles.card}>
-        <Image
-          style={styles.bigImg}
-          source={{ uri: `${API_BASE_URL}/images/productos/${tornillo.productoCodigo}.png` }}
-        />
+        <Image style={styles.bigImg} source={{ uri: imgSrc }} />
         <View style={[styles.dot, { backgroundColor: statusColor }]} />
 
         <Text style={styles.codigo}>{tornillo.productoCodigo}</Text>
@@ -166,7 +150,7 @@ export default function TornilloDetail() {
         </View>
 
         <Text style={styles.meta}>R: {rDia}</Text>
-        <Text style={styles.meta}>Caducidad: {producto?.caducidad_dias ?? '-'} días</Text>
+        <Text style={styles.meta}>Caducidad: {tornillo.caducidadDias ?? '-'} días</Text>
 
         <TouchableOpacity style={styles.primaryBtn} onPress={save} disabled={saving}>
           {saving ? <ActivityIndicator /> : <Text style={styles.primaryTxt}>Validar</Text>}
