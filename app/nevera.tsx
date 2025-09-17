@@ -1,5 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, Dimensions, Image } from 'react-native';
 import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useLocalSearchParams } from 'expo-router';
 
 type Tornillo = {
   id: number;
@@ -17,13 +19,22 @@ type Tornillo = {
 export default function NeveraScreen() {
   const [tornillos, setTornillos] = useState<Tornillo[]>([]);
   const [maxFila, setMaxFila] = useState(0);
+  const [tiendaId, setTiendaId] = useState<string | null>(null);
+  const params = useLocalSearchParams();
 
   useEffect(() => {
     const fetchTornillos = async () => {
       try {
-        const res = await fetch(
-          'http://localhost:8080/api/tornillos/dto/tienda/3718/familia/Zumo%20muralita/modulo/Puerta%201'
-        );
+        const storedId = await AsyncStorage.getItem('tiendaId');
+        if (!storedId || !params.familia) return;
+
+        setTiendaId(storedId);
+
+        const familiaCodificada = encodeURIComponent(params.familia.toString());
+        console.log(familiaCodificada); 
+        const url = `http://localhost:8080/api/tornillos/dto/tienda/${storedId}/familia/${familiaCodificada}/modulo/Puerta%201`;
+
+        const res = await fetch(url);
         const data: Tornillo[] = await res.json();
 
         const maxF = Math.max(...data.map(t => t.fila));
@@ -35,7 +46,7 @@ export default function NeveraScreen() {
     };
 
     fetchTornillos();
-  }, []);
+  }, [params.familia]);
 
   const renderGrid = () => {
     const grid = [];
@@ -69,7 +80,9 @@ export default function NeveraScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Nevera - Puerta 1</Text>
+      <Text style={styles.title}>
+        Nevera - Puerta 1 {params.familia ? `| ${params.familia}` : ''}
+      </Text>
       {renderGrid()}
     </ScrollView>
   );
@@ -87,6 +100,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 20,
+    textAlign: 'center',
   },
   row: {
     flexDirection: 'row',
@@ -95,9 +109,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cell: {
-    flexDirection: 'row',           // Imagen a la izquierda, texto a la derecha
-    alignItems: 'center',           // Centrado vertical
-    justifyContent: 'center',       // Centrado horizontal
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginHorizontal: 4,
     height: 100,
     flex: 1,

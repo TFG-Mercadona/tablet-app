@@ -1,5 +1,7 @@
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const data = [
   { name: 'Lácteos Mural', image: require('@/assets/images/lacteos.png') },
@@ -11,9 +13,20 @@ const data = [
 
 export default function RevisarScreen() {
   const router = useRouter();
+  const [tiendaId, setTiendaId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadTiendaId = async () => {
+      const id = await AsyncStorage.getItem('tiendaId');
+      if (id) setTiendaId(id);
+    };
+
+    loadTiendaId();
+  }, []);
 
   const handlePress = (familia: string) => {
-    router.push({ pathname: '/nevera', params: { familia } });
+    // Navega a nevera con familia e idTienda
+    router.push({ pathname: '/nevera', params: { familia, tiendaId } });
   };
 
   return (
@@ -28,19 +41,17 @@ export default function RevisarScreen() {
       <View style={styles.divider} />
 
       {/* Título */}
-      <Text style={styles.title}>Tienda 3718</Text>
+      <Text style={styles.title}>Tienda {tiendaId ?? '...'}</Text>
 
       {/* Lista de productos */}
       {data.map((item, index) => (
         <TouchableOpacity key={index} onPress={() => handlePress(item.name)}>
-          <View key={index} style={styles.productContainer}>
+          <View style={styles.productContainer}>
             <View style={styles.productRow}>
-              {/* Imagen y nombre del pasillo */}
-                <View style={styles.productInfo}>
-                  <Image source={item.image} style={styles.productImage} />
-                  <Text style={styles.productName}>{item.name}</Text>
-                </View>
-              {/* Indicadores a la derecha */}
+              <View style={styles.productInfo}>
+                <Image source={item.image} style={styles.productImage} />
+                <Text style={styles.productName}>{item.name}</Text>
+              </View>
               <View style={styles.indicatorGroup}>
                 <View style={styles.indicatorColumn}>
                   <View style={styles.indicatorWrapper}>
@@ -68,9 +79,9 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 4,
-    backgroundColor: '#ccc', // Puedes usar otro color si quieres
+    backgroundColor: '#ccc',
     width: '100%',
-    marginVertical: 10, // Espacio arriba y abajo
+    marginVertical: 10,
   },
   header: {
     flexDirection: 'row',
@@ -121,12 +132,12 @@ const styles = StyleSheet.create({
   indicatorColumn: {
     justifyContent: 'center',
     alignItems: 'flex-start',
-    minWidth: 100, // Ancho fijo para mantener alineación
+    minWidth: 100,
   },
   indicatorWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start', // El texto se alinea a la derecha
+    justifyContent: 'flex-start',
     marginBottom: 8,
   },
   statusCircle: {

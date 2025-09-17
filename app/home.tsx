@@ -1,19 +1,35 @@
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const [tiendaId, setTiendaId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const cargarTiendaId = async () => {
+      try {
+        const id = await AsyncStorage.getItem('tiendaId');
+        if (id) setTiendaId(id);
+      } catch (error) {
+        console.error('Error al cargar tiendaId de AsyncStorage', error);
+      }
+    };
+
+    cargarTiendaId();
+  }, []);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       {/* Encabezado */}
       <View style={styles.header}>
         <Image source={require('@/assets/images/calendar-alert.png')} style={styles.headerIcon} />
-        <Text style={styles.versionText}>3718 | PROD | v1300</Text>
+        <Text style={styles.versionText}>{tiendaId ?? 'Cargando...'} | PROD | v1300</Text>
       </View>
 
       {/* Título */}
-      <Text style={styles.title}>Tienda 3718</Text>
+      <Text style={styles.title}>Tienda {tiendaId ?? '...'}</Text>
 
       {/* Sección de tareas */}
       <Text style={styles.sectionLabel}>Funciones</Text>
