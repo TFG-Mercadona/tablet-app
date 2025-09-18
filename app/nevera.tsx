@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, Dimensions, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useEffect, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
 
@@ -26,12 +26,13 @@ const parseYMD = (s: string) => {
   return new Date(y, m, d);
 };
 
+// Cambia el color de "hoy" a naranja para que coincida con la pantalla de detalle
 const getStatusColor = (fecha: string | null) => {
   if (!fecha) return '#9e9e9e';
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const f = parseYMD(fecha); f.setHours(0, 0, 0, 0);
   if (f.getTime() > today.getTime()) return '#2ecc71';   // verde
-  if (f.getTime() === today.getTime()) return '#f1c40f'; // amarillo
+  if (f.getTime() === today.getTime()) return '#ff9800'; // naranja
   return '#e74c3c';                                      // rojo
 };
 
@@ -87,30 +88,37 @@ export default function NeveraScreen() {
 
   // 2) Cada vez que cambie moduloActual, pedimos los tornillos de ese módulo
   const fetchTornillos = useCallback(async () => {
-    if (!tiendaId || !params.familia || !moduloActual) return;
-    try {
-      setError(null);
-      setLoadingTornillos(true);
+  if (!tiendaId || !params.familia || !moduloActual) return;
+  try {
+    setError(null);
+    setLoadingTornillos(true);
 
-      const familia = encodeURIComponent(params.familia.toString());
-      const modulo = encodeURIComponent(moduloActual);
-      const url = `${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/familia/${familia}/modulo/${modulo}`;
+    const familia = encodeURIComponent(params.familia.toString());
+    const modulo = encodeURIComponent(moduloActual);
+    const url = `${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/familia/${familia}/modulo/${modulo}?ts=${Date.now()}`;
 
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Error ${res.status} cargando tornillos`);
-      const data: Tornillo[] = await res.json();
+    const res = await fetch(url, { cache: 'no-store' } as RequestInit);
+    if (!res.ok) throw new Error(`Error ${res.status} cargando tornillos`);
+    const data: Tornillo[] = await res.json();
 
-      const maxF = data.length ? Math.max(...data.map(t => t.fila)) : 0;
-      setMaxFila(maxF);
-      setTornillos(data);
-    } catch (e: any) {
-      setError(e.message ?? 'Error cargando tornillos');
-      setTornillos([]);
-      setMaxFila(0);
-    } finally {
-      setLoadingTornillos(false);
-    }
-  }, [tiendaId, params.familia, moduloActual]);
+    const maxF = data.length ? Math.max(...data.map(t => t.fila)) : 0;
+    setMaxFila(maxF);
+    setTornillos(data);
+  } catch (e: any) {
+    setError(e.message ?? 'Error cargando tornillos');
+    setTornillos([]);
+    setMaxFila(0);
+  } finally {
+    setLoadingTornillos(false);
+  }
+}, [tiendaId, params.familia, moduloActual]);
+
+// Refetch al volver a esta pantalla
+useFocusEffect(
+  useCallback(() => {
+    fetchTornillos();
+  }, [fetchTornillos])
+);
 
   useEffect(() => {
     fetchTornillos();
