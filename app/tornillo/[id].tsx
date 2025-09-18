@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from 'react';
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
 
 type TornilloDTO = {
-  // Tornillo
   id: number;
   productoCodigo: number;
   tiendaId: number;
@@ -14,7 +13,6 @@ type TornilloDTO = {
   nombreModulo: string;
   fila: number;
   columna: number;
-  // Producto (del DTO)
   nombre: string;
   imagenUrl?: string | null;
   familia?: string | null;
@@ -29,17 +27,19 @@ const toYMD = (d: Date) => {
   return `${y}-${m}-${dd}`;
 };
 const parseYMD = (s: string) => new Date(Number(s.slice(0,4)), Number(s.slice(5,7)) - 1, Number(s.slice(8,10)));
+const isYMD = (s?: string | null) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+// Colores estado (verde / naranja / rojo) según la FECHA *DE RETIRADA*
 const getStatusColor = (fecha: string | null) => {
-  if (!fecha) return '#9e9e9e';
+  if (!fecha) return '#9e9e9e'; // gris
   const today = new Date(); today.setHours(0,0,0,0);
   const f = parseYMD(fecha); f.setHours(0,0,0,0);
   if (f.getTime() > today.getTime()) return '#2ecc71';   // verde
-  if (f.getTime() === today.getTime()) return '#f1c40f'; // amarillo
+  if (f.getTime() === today.getTime()) return '#ff9800'; // naranja
   return '#e74c3c';                                       // rojo
 };
 
 export default function TornilloDetail() {
-  // `id` aquí es el productoCodigo (como venías usando)
   const { id, tiendaId } = useLocalSearchParams<{ id?: string; tiendaId?: string }>();
   const router = useRouter();
 
@@ -72,12 +72,38 @@ export default function TornilloDetail() {
 
   useEffect(() => { fetchData(); }, [id, tiendaId]);
 
-  const statusColor = useMemo(() => getStatusColor(fechaCad), [fechaCad]);
-  const rDia = useMemo(() => {
-    if (!tornillo?.fechaRetirada) return '-';
-    const d = parseYMD(tornillo.fechaRetirada);
-    return d.getDate(); // sólo día del mes
-  }, [tornillo?.fechaRetirada]);
+  // ========================
+  // RETIRADA "EN VIVO"
+  // ========================
+  // 1) Calculamos la fecha de retirada en base a lo que hay en el input (fechaCad) y caducidadDias.
+  //    Si no hay datos válidos, caemos a la retirada real del backend.
+  const retiradaDate = useMemo(() => {
+    if (!tornillo) return null;
+
+    const dias = tornillo.caducidadDias ?? null;
+    if (isYMD(fechaCad) && dias !== null) {
+      const d = parseYMD(fechaCad);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - dias);
+      return d;
+    }
+
+    if (tornillo.fechaRetirada && isYMD(tornillo.fechaRetirada)) {
+      const d = parseYMD(tornillo.fechaRetirada);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
+
+    return null;
+  }, [tornillo, fechaCad]);
+
+  // 2) El color de la bola depende de RETIRADA (no de caducidad)
+  const statusColor = useMemo(() => {
+    return retiradaDate ? getStatusColor(toYMD(retiradaDate)) : '#9e9e9e';
+  }, [retiradaDate]);
+
+  // 3) El texto "R:" también sale de la retirada "en vivo"
+  const rDia = useMemo(() => (retiradaDate ? retiradaDate.getDate() : '-'), [retiradaDate]);
 
   // Ajustes rápidos de fecha
   const shiftDays = (days: number) => {
@@ -115,14 +141,14 @@ export default function TornilloDetail() {
   if (!tornillo) return <View style={styles.container}><Text>No encontrado</Text></View>;
 
   const imgSrc = tornillo.imagenUrl
-    ? `${API_BASE_URL}${tornillo.imagenUrl}` // el backend te manda "/images/productos/39946.png"
+    ? `${API_BASE_URL}${tornillo.imagenUrl}`
     : `${API_BASE_URL}/images/productos/${tornillo.productoCodigo}.png`;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Text style={styles.backTxt}>‹</Text></TouchableOpacity>
-        <Text style={styles.title}>Módulo {tornillo.nombreModulo}</Text>
+        <Text style={styles.title}>{tornillo.nombreModulo} | {tornillo.familia}</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -150,7 +176,7 @@ export default function TornilloDetail() {
         </View>
 
         <Text style={styles.meta}>R: {rDia}</Text>
-        <Text style={styles.meta}>Caducidad: {tornillo.caducidadDias ?? '-'} días</Text>
+        <Text style={styles.meta}>Caducidad: {tornillo.caducidadDias ?? '-' } días</Text>
 
         <TouchableOpacity style={styles.primaryBtn} onPress={save} disabled={saving}>
           {saving ? <ActivityIndicator /> : <Text style={styles.primaryTxt}>Validar</Text>}
