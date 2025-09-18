@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, Image, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TextInput, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -38,6 +38,7 @@ const getStatusColor = (fecha: string | null) => {
   if (f.getTime() === today.getTime()) return '#ff9800'; // naranja
   return '#e74c3c';                                       // rojo
 };
+
 
 export default function TornilloDetail() {
   const { id, tiendaId } = useLocalSearchParams<{ id?: string; tiendaId?: string }>();
@@ -112,29 +113,53 @@ export default function TornilloDetail() {
     setFechaCad(toYMD(base));
   };
 
-  // Guardar cambios
-  const save = async () => {
-    if (!tornillo) return;
-    try {
-      setSaving(true);
-      setError(null);
+  const goBackToNevera = () => {
+  // si hay historial, volvemos atrás
+  // (en expo-router suele existir; si no, navegamos por ruta como fallback)
+  // @ts-ignore: canGoBack existe en runtime aunque no tipado en algunas versiones
+  if (typeof router.canGoBack === 'function' && router.canGoBack()) {
+    router.back();
+  } else {
+    // Fallback: navega a tu pantalla de nevera (ajusta pathname si tu archivo se llama distinto)
+    router.replace({
+      pathname: '/nevera',               // <-- cámbialo si tu archivo es otro (ej. '/(tabs)/nevera')
+      params: {
+        tiendaId: String(tornillo?.tiendaId ?? ''),
+        familia: String(tornillo?.familia ?? ''),
+        modulo: String(tornillo?.nombreModulo ?? ''),
+      },
+    });
+  }
+};
 
-      const res = await fetch(`${API_BASE_URL}/api/tornillos/${tornillo.id}/fecha-caducidad`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fechaCaducidad: fechaCad }),
-      });
-      if (!res.ok) throw new Error(`Error ${res.status} guardando fecha`);
+// Guardar cambios
+const save = async () => {
+  if (!tornillo) return;
+  try {
+    setSaving(true);
+    setError(null);
 
-      // refresca para ver nueva fecha_retirada del trigger
-      await fetchData();
-      Alert.alert('Guardado', 'Fecha de caducidad actualizada.');
-    } catch (e: any) {
-      setError(e.message ?? 'Error al guardar');
-    } finally {
-      setSaving(false);
+    const res = await fetch(`${API_BASE_URL}/api/tornillos/${tornillo.id}/fecha-caducidad`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fechaCaducidad: fechaCad }),
+    });
+    if (!res.ok) throw new Error(`Error ${res.status} guardando fecha`);
+
+    if (Platform.OS === 'web') {
+      window.alert('Fecha de caducidad actualizada.');
+      goBackToNevera();
+    } else {
+      Alert.alert('Guardado', 'Fecha de caducidad actualizada.', [
+        { text: 'OK', onPress: goBackToNevera },
+      ]);
     }
-  };
+  } catch (e: any) {
+    setError(e.message ?? 'Error al guardar');
+  } finally {
+    setSaving(false);
+  }
+};
 
   if (loading) return <View style={styles.container}><ActivityIndicator size="large" /></View>;
   if (error) return <View style={styles.container}><Text style={styles.error}>{error}</Text></View>;
