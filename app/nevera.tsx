@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, ScrollView, Dimensions, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, Dimensions, Image, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
@@ -15,10 +15,10 @@ type Tornillo = {
   fila: number;
   columna: number;
   nombre: string;
-  imagenUrl?: string;
+  imagenUrl?: string | null;
 };
 
-// --- Helpers para estados por fecha ---
+// --- Helpers para fechas/estado ---
 const parseYMD = (s: string) => {
   const y = Number(s.slice(0, 4));
   const m = Number(s.slice(5, 7)) - 1;
@@ -26,21 +26,28 @@ const parseYMD = (s: string) => {
   return new Date(y, m, d);
 };
 
-// Cambia el color de "hoy" a naranja para que coincida con la pantalla de detalle
+const isPast = (s?: string | null) => {
+  if (!s) return false;
+  const d = parseYMD(s); d.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return d.getTime() < today.getTime();
+};
+
+// Colores por FECHA DE RETIRADA (verde / naranja hoy / rojo)
 const getStatusColor = (fecha: string | null) => {
   if (!fecha) return '#9e9e9e';
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const f = parseYMD(fecha); f.setHours(0, 0, 0, 0);
-  if (f.getTime() > today.getTime()) return '#2ecc71';   // verde
-  if (f.getTime() === today.getTime()) return '#ff9800'; // naranja
-  return '#e74c3c';                                      // rojo
+  if (f.getTime() > today.getTime()) return '#2ecc71';   // verde (retirada futura)
+  if (f.getTime() === today.getTime()) return '#ff9800'; // naranja (retirar hoy)
+  return '#e74c3c';                                      // rojo (retirar ya)
 };
 
 export default function NeveraScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams(); // esperamos params.familia
-  const [tiendaId, setTiendaId] = useState<string | null>(null);
+  const params = useLocalSearchParams<{ familia?: string }>();
 
+  const [tiendaId, setTiendaId] = useState<string | null>(null);
   const [modulos, setModulos] = useState<string[]>([]);
   const [modIndex, setModIndex] = useState(0);
   const moduloActual = modulos[modIndex] ?? 'Puerta 1';
@@ -52,7 +59,12 @@ export default function NeveraScreen() {
   const [loadingTornillos, setLoadingTornillos] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 1) Cargamos tiendaId y módulos (puertas) de la familia
+  const [familyPendientesCount, setFamilyPendientesCount] = useState(0);
+
+  // <<< NEW: para mostrar el popup solo una vez >>>
+  const [promptShown, setPromptShown] = useState(false);
+
+  // 1) Cargar tiendaId y módulos de la familia
   useEffect(() => {
     const init = async () => {
       try {
@@ -86,43 +98,119 @@ export default function NeveraScreen() {
     init();
   }, [params.familia]);
 
-  // 2) Cada vez que cambie moduloActual, pedimos los tornillos de ese módulo
+  // 2) Traer tornillos del módulo actual
   const fetchTornillos = useCallback(async () => {
-  if (!tiendaId || !params.familia || !moduloActual) return;
-  try {
-    setError(null);
-    setLoadingTornillos(true);
+    if (!tiendaId || !params.familia || !moduloActual) return;
+    try {
+      setError(null);
+      setLoadingTornillos(true);
 
-    const familia = encodeURIComponent(params.familia.toString());
-    const modulo = encodeURIComponent(moduloActual);
-    const url = `${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/familia/${familia}/modulo/${modulo}?ts=${Date.now()}`;
+      const familia = encodeURIComponent(params.familia.toString());
+      const modulo = encodeURIComponent(moduloActual);
+      const url = `${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/familia/${familia}/modulo/${modulo}?ts=${Date.now()}`;
 
-    const res = await fetch(url, { cache: 'no-store' } as RequestInit);
-    if (!res.ok) throw new Error(`Error ${res.status} cargando tornillos`);
-    const data: Tornillo[] = await res.json();
+      const res = await fetch(url, { cache: 'no-store' } as RequestInit);
+      if (!res.ok) throw new Error(`Error ${res.status} cargando tornillos`);
+      const data: Tornillo[] = await res.json();
 
-    const maxF = data.length ? Math.max(...data.map(t => t.fila)) : 0;
-    setMaxFila(maxF);
-    setTornillos(data);
-  } catch (e: any) {
-    setError(e.message ?? 'Error cargando tornillos');
-    setTornillos([]);
-    setMaxFila(0);
-  } finally {
-    setLoadingTornillos(false);
-  }
-}, [tiendaId, params.familia, moduloActual]);
+      const maxF = data.length ? Math.max(...data.map(t => t.fila)) : 0;
+      setMaxFila(maxF);
+      setTornillos(data);
+    } catch (e: any) {
+      setError(e.message ?? 'Error cargando tornillos');
+      setTornillos([]);
+      setMaxFila(0);
+    } finally {
+      setLoadingTornillos(false);
+    }
+  }, [tiendaId, params.familia, moduloActual]);
 
-// Refetch al volver a esta pantalla
-useFocusEffect(
-  useCallback(() => {
-    fetchTornillos();
-  }, [fetchTornillos])
-);
+  // Refetch al volver a esta pantalla
+  useFocusEffect(
+    useCallback(() => {
+      fetchTornillos();
+    }, [fetchTornillos])
+  );
 
+  // Y también si cambian dependencias (primera carga/cambio de módulo)
   useEffect(() => {
     fetchTornillos();
   }, [fetchTornillos]);
+
+  // Pendientes (fechaRetirada pasada)
+  const pendientes = useMemo(() => tornillos.filter(t => isPast(t.fechaRetirada)), [tornillos]);
+  const pendientesCount = pendientes.length;
+
+
+  // EFECTO NUEVO: calcula pendientes de TODA la familia (suma de todos los módulos)
+useEffect(() => {
+  const loadFamilyPendings = async () => {
+    try {
+      if (!tiendaId || !params.familia) return;
+
+      // 1) Traemos módulos de la familia
+      const familia = encodeURIComponent(String(params.familia));
+      const modsRes = await fetch(`${API_BASE_URL}/api/tornillos/tienda/${tiendaId}/familia/${familia}/modulos`);
+      if (!modsRes.ok) throw new Error('No se pudieron cargar módulos');
+      const mods: string[] = await modsRes.json();
+
+      if (!mods?.length) { setFamilyPendientesCount(0); return; }
+
+      // 2) Traemos tornillos DTO de cada módulo y acumulamos
+      const lists = await Promise.all(
+        mods.map(m => {
+          const modulo = encodeURIComponent(m);
+          return fetch(`${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/familia/${familia}/modulo/${modulo}?ts=${Date.now()}`)
+                 .then(r => r.ok ? r.json() : []);
+        })
+      );
+
+      const all: Tornillo[] = lists.flat();
+      const pending = all.filter(t => isPast(t.fechaRetirada)).length;
+      setFamilyPendientesCount(pending);
+    } catch {
+      setFamilyPendientesCount(0);
+    }
+  };
+  loadFamilyPendings();
+}, [tiendaId, params.familia]);
+
+
+  // EFECTO NUEVO: popup solo 1 vez y SOLO en el primer módulo; cuenta por familia
+useEffect(() => {
+  if (!promptShown &&
+      modIndex === 0 &&
+      !loadingModulos &&
+      !loadingTornillos &&
+      familyPendientesCount > 0 &&
+      tiendaId) {
+
+    setPromptShown(true);
+
+    const msg = `Tenemos ${familyPendientesCount} tornillo${familyPendientesCount !== 1 ? 's' : ''} para retirar en esta familia.\n\n¿Quieres comenzar a revisar?`;
+
+    const goRetirar = () => {
+      router.push({
+        pathname: '/retirar',
+        params: {
+          tiendaId: String(tiendaId),
+          familia: String(params.familia ?? ''),
+        },
+      });
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(msg)) goRetirar();
+    } else {
+      Alert.alert('Productos pendientes', msg, [
+        { text: 'No' },
+        { text: 'Sí', onPress: goRetirar },
+      ]);
+    }
+  }
+}, [promptShown, modIndex, loadingModulos, loadingTornillos, familyPendientesCount, tiendaId, params.familia]);
+
+
 
   // Navegación entre puertas
   const prevModulo = () => setModIndex(i => Math.max(0, i - 1));
@@ -144,7 +232,7 @@ useFocusEffect(
               style={{ flex: 1 }}
               onPress={() =>
                 router.push({
-                  pathname: "/tornillo/[id]",
+                  pathname: '/tornillo/[id]',
                   params: {
                     id: String(t.productoCodigo),
                     familia: String(params.familia ?? ''),
@@ -183,9 +271,16 @@ useFocusEffect(
           <Text style={styles.arrowText}>‹</Text>
         </TouchableOpacity>
 
-        <Text style={styles.title}>
-          {moduloActual} {params.familia ? `| ${params.familia}` : ''}
-        </Text>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={styles.title}>
+            {moduloActual} {params.familia ? `| ${params.familia}` : ''}
+          </Text>
+          {pendientesCount > 0 && (
+            <Text style={{ color: '#e74c3c', marginTop: 2 }}>
+              {pendientesCount} pendiente{pendientesCount !== 1 ? 's' : ''} de retirar
+            </Text>
+          )}
+        </View>
 
         <TouchableOpacity onPress={nextModulo} disabled={modIndex >= modulos.length - 1} style={[styles.arrowBtn, (modIndex >= modulos.length - 1) && styles.arrowDisabled]}>
           <Text style={styles.arrowText}>›</Text>
@@ -232,13 +327,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  arrowDisabled: {
-    opacity: 0.35,
-  },
-  arrowText: {
-    fontSize: 28,
-    lineHeight: 28,
-  },
+  arrowDisabled: { opacity: 0.35 },
+  arrowText: { fontSize: 28, lineHeight: 28 },
   title: {
     flexShrink: 1,
     fontSize: 20,
@@ -276,7 +366,8 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-  },  
+    flexShrink: 1,
+  },
   codigo: { fontSize: 14, fontWeight: 'bold' },
   nombre: { fontSize: 14 },
   statusBall: {
