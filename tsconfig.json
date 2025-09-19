@@ -1,17 +1,14 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
+    "target": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
     "strict": true,
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    }
-  },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
-  ]
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["expo-router/types"],
+    "baseUrl": ".",
+    "paths": { "@/*": ["./*"] }
+  }
 }

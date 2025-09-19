@@ -209,7 +209,7 @@ useEffect(() => {
     }
   }
 }, [promptShown, modIndex, loadingModulos, loadingTornillos, familyPendientesCount, tiendaId, params.familia]);
-
+  // <<< END popup >>>
 
 
   // Navegación entre puertas
