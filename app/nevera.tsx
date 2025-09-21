@@ -1,9 +1,36 @@
-import { View, Text, StyleSheet, ScrollView, Dimensions, Image, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
+// app/nevera.tsx
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Dimensions,
+} from 'react-native';
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
+
+/* ===== UI palette como revisar.tsx ===== */
+const UI = {
+  bg: '#FFFFFF',
+  card: '#FFFFFF',
+  border: '#E5E7EB',
+  text: '#111827',
+  sub: '#6B7280',
+  red: '#E11D48',
+  amber: '#F59E0B',
+  green: '#2ecc71',
+  orange: '#ff9800',
+  gray: '#9e9e9e',
+};
+
 
 type Tornillo = {
   id: number;
@@ -18,13 +45,9 @@ type Tornillo = {
   imagenUrl?: string | null;
 };
 
-// --- Helpers para fechas/estado ---
-const parseYMD = (s: string) => {
-  const y = Number(s.slice(0, 4));
-  const m = Number(s.slice(5, 7)) - 1;
-  const d = Number(s.slice(8, 10));
-  return new Date(y, m, d);
-};
+/* ===== Helpers fecha/estado ===== */
+const parseYMD = (s: string) =>
+  new Date(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)));
 
 const isPast = (s?: string | null) => {
   if (!s) return false;
@@ -35,12 +58,12 @@ const isPast = (s?: string | null) => {
 
 // Colores por FECHA DE RETIRADA (verde / naranja hoy / rojo)
 const getStatusColor = (fecha: string | null) => {
-  if (!fecha) return '#9e9e9e';
+  if (!fecha) return UI.gray;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const f = parseYMD(fecha); f.setHours(0, 0, 0, 0);
-  if (f.getTime() > today.getTime()) return '#2ecc71';   // verde (retirada futura)
-  if (f.getTime() === today.getTime()) return '#ff9800'; // naranja (retirar hoy)
-  return '#e74c3c';                                      // rojo (retirar ya)
+  if (f.getTime() > today.getTime()) return UI.green;   // futura
+  if (f.getTime() === today.getTime()) return UI.orange; // hoy
+  return UI.red;                                         // pasada
 };
 
 export default function NeveraScreen() {
@@ -60,11 +83,9 @@ export default function NeveraScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const [familyPendientesCount, setFamilyPendientesCount] = useState(0);
+  const [promptShown, setPromptShown] = useState(false); // popup solo una vez
 
-  // <<< NEW: para mostrar el popup solo una vez >>>
-  const [promptShown, setPromptShown] = useState(false);
-
-  // 1) Cargar tiendaId y módulos de la familia
+  /* ===== Cargar tienda y módulos ===== */
   useEffect(() => {
     const init = async () => {
       try {
@@ -98,7 +119,7 @@ export default function NeveraScreen() {
     init();
   }, [params.familia]);
 
-  // 2) Traer tornillos del módulo actual
+  /* ===== Traer tornillos del módulo actual ===== */
   const fetchTornillos = useCallback(async () => {
     if (!tiendaId || !params.familia || !moduloActual) return;
     try {
@@ -125,97 +146,85 @@ export default function NeveraScreen() {
     }
   }, [tiendaId, params.familia, moduloActual]);
 
-  // Refetch al volver a esta pantalla
-  useFocusEffect(
-    useCallback(() => {
-      fetchTornillos();
-    }, [fetchTornillos])
+  useFocusEffect(useCallback(() => { fetchTornillos(); }, [fetchTornillos]));
+  useEffect(() => { fetchTornillos(); }, [fetchTornillos]);
+
+  /* ===== Contar pendientes del módulo y de la familia ===== */
+  const pendientesModulo = useMemo(
+    () => tornillos.filter(t => isPast(t.fechaRetirada)),
+    [tornillos]
   );
+  const pendientesModuloCount = pendientesModulo.length;
 
-  // Y también si cambian dependencias (primera carga/cambio de módulo)
   useEffect(() => {
-    fetchTornillos();
-  }, [fetchTornillos]);
+    const loadFamilyPendings = async () => {
+      try {
+        if (!tiendaId || !params.familia) return;
 
-  // Pendientes (fechaRetirada pasada)
-  const pendientes = useMemo(() => tornillos.filter(t => isPast(t.fechaRetirada)), [tornillos]);
-  const pendientesCount = pendientes.length;
+        const familia = encodeURIComponent(String(params.familia));
+        const modsRes = await fetch(`${API_BASE_URL}/api/tornillos/tienda/${tiendaId}/familia/${familia}/modulos`);
+        if (!modsRes.ok) throw new Error('No se pudieron cargar módulos');
+        const mods: string[] = await modsRes.json();
 
+        if (!mods?.length) { setFamilyPendientesCount(0); return; }
 
-  // EFECTO NUEVO: calcula pendientes de TODA la familia (suma de todos los módulos)
-useEffect(() => {
-  const loadFamilyPendings = async () => {
-    try {
-      if (!tiendaId || !params.familia) return;
+        const lists = await Promise.all(
+          mods.map(m => {
+            const modulo = encodeURIComponent(m);
+            return fetch(`${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/familia/${familia}/modulo/${modulo}?ts=${Date.now()}`)
+              .then(r => (r.ok ? r.json() : []));
+          })
+        );
 
-      // 1) Traemos módulos de la familia
-      const familia = encodeURIComponent(String(params.familia));
-      const modsRes = await fetch(`${API_BASE_URL}/api/tornillos/tienda/${tiendaId}/familia/${familia}/modulos`);
-      if (!modsRes.ok) throw new Error('No se pudieron cargar módulos');
-      const mods: string[] = await modsRes.json();
-
-      if (!mods?.length) { setFamilyPendientesCount(0); return; }
-
-      // 2) Traemos tornillos DTO de cada módulo y acumulamos
-      const lists = await Promise.all(
-        mods.map(m => {
-          const modulo = encodeURIComponent(m);
-          return fetch(`${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/familia/${familia}/modulo/${modulo}?ts=${Date.now()}`)
-                 .then(r => r.ok ? r.json() : []);
-        })
-      );
-
-      const all: Tornillo[] = lists.flat();
-      const pending = all.filter(t => isPast(t.fechaRetirada)).length;
-      setFamilyPendientesCount(pending);
-    } catch {
-      setFamilyPendientesCount(0);
-    }
-  };
-  loadFamilyPendings();
-}, [tiendaId, params.familia]);
-
-
-  // EFECTO NUEVO: popup solo 1 vez y SOLO en el primer módulo; cuenta por familia
-useEffect(() => {
-  if (!promptShown &&
-      modIndex === 0 &&
-      !loadingModulos &&
-      !loadingTornillos &&
-      familyPendientesCount > 0 &&
-      tiendaId) {
-
-    setPromptShown(true);
-
-    const msg = `Tenemos ${familyPendientesCount} tornillo${familyPendientesCount !== 1 ? 's' : ''} para retirar en esta familia.\n\n¿Quieres comenzar a revisar?`;
-
-    const goRetirar = () => {
-      router.push({
-        pathname: '/retirar',
-        params: {
-          tiendaId: String(tiendaId),
-          familia: String(params.familia ?? ''),
-        },
-      });
+        const all: Tornillo[] = lists.flat();
+        const pending = all.filter(t => isPast(t.fechaRetirada)).length;
+        setFamilyPendientesCount(pending);
+      } catch {
+        setFamilyPendientesCount(0);
+      }
     };
+    loadFamilyPendings();
+  }, [tiendaId, params.familia]);
 
-    if (Platform.OS === 'web') {
-      if (window.confirm(msg)) goRetirar();
-    } else {
-      Alert.alert('Productos pendientes', msg, [
-        { text: 'No' },
-        { text: 'Sí', onPress: goRetirar },
-      ]);
+  /* ===== Popup “retirar” (solo en primer módulo) ===== */
+  useEffect(() => {
+    if (!promptShown &&
+        modIndex === 0 &&
+        !loadingModulos &&
+        !loadingTornillos &&
+        familyPendientesCount > 0 &&
+        tiendaId) {
+
+      setPromptShown(true);
+
+      const msg = `Tenemos ${familyPendientesCount} tornillo${familyPendientesCount !== 1 ? 's' : ''} para retirar en esta familia.\n\n¿Quieres comenzar a revisar?`;
+
+      const goRetirar = () => {
+        router.push({
+          pathname: '/retirar',
+          params: {
+            tiendaId: String(tiendaId),
+            familia: String(params.familia ?? ''),
+          },
+        });
+      };
+
+      if (Platform.OS === 'web') {
+        if (window.confirm(msg)) goRetirar();
+      } else {
+        Alert.alert('Productos pendientes', msg, [
+          { text: 'No' },
+          { text: 'Sí', onPress: goRetirar },
+        ]);
+      }
     }
-  }
-}, [promptShown, modIndex, loadingModulos, loadingTornillos, familyPendientesCount, tiendaId, params.familia]);
-  // <<< END popup >>>
+  }, [promptShown, modIndex, loadingModulos, loadingTornillos, familyPendientesCount, tiendaId, params.familia, router]);
 
-
-  // Navegación entre puertas
+  /* ===== Navegación entre puertas ===== */
   const prevModulo = () => setModIndex(i => Math.max(0, i - 1));
   const nextModulo = () => setModIndex(i => Math.min(modulos.length - 1, i + 1));
 
+  /* ===== Grid ===== */
   const renderGrid = () => {
     const grid = [];
     for (let fila = 1; fila <= maxFila; fila++) {
@@ -242,14 +251,22 @@ useEffect(() => {
                 })
               }
             >
-              <View style={[styles.cell, { flex: 1 }]}>
+              <View style={styles.cell}>
                 <Image
                   style={styles.image}
                   source={{ uri: `${API_BASE_URL}/images/productos/${t.productoCodigo}.png` }}
                 />
-                <View style={styles.textContainer}>
+
+                {/* Columna de 3 líneas con altura fija = alto imagen */}
+                <View style={styles.infoCol}>
                   <Text style={styles.codigo}>{t.productoCodigo}</Text>
-                  <Text style={styles.nombre} numberOfLines={2}>{t.nombre}</Text>
+
+                  {/* Nombre centrado verticalmente dentro de su “línea” */}
+                  <View style={styles.nameLine}>
+                    <Text style={styles.nombre} numberOfLines={2}>{t.nombre}</Text>
+                  </View>
+
+                  {/* Bolita alineada abajo SIEMPRE */}
                   <View style={[styles.statusBall, { backgroundColor: getStatusColor(t.fechaRetirada) }]} />
                 </View>
               </View>
@@ -264,119 +281,170 @@ useEffect(() => {
     return grid;
   };
 
+  /* ===== Render ===== */
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={prevModulo} disabled={modIndex === 0} style={[styles.arrowBtn, modIndex === 0 && styles.arrowDisabled]}>
-          <Text style={styles.arrowText}>‹</Text>
-        </TouchableOpacity>
+    <View style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.container}>
+        {/* App bar: back + Familia / Tienda */}
+        <View style={styles.appBar}>
+          <View style={styles.appBarLeft}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.8}>
+              <Image source={require('@/assets/images/back.png')} style={styles.backIcon} />
+            </TouchableOpacity>
+            <View>
+              <Text style={styles.appBarTitle}>{params.familia ?? 'Familia'}</Text>
+              <Text style={styles.appBarSub}>Tienda {tiendaId ?? '…'}</Text>
+            </View>
+          </View>
+          <View style={{ width: 32 }} />
+        </View>
 
-        <View style={{ alignItems: 'center' }}>
-          <Text style={styles.title}>
-            {moduloActual} {params.familia ? `| ${params.familia}` : ''}
-          </Text>
-          {pendientesCount > 0 && (
-            <Text style={{ color: '#e74c3c', marginTop: 2 }}>
-              {pendientesCount} pendiente{pendientesCount !== 1 ? 's' : ''} de retirar
+        {/* Tarjeta de módulo + contador módulo + navegación */}
+        <View style={styles.card}>
+          <View style={styles.moduleHeader}>
+            <TouchableOpacity onPress={prevModulo} disabled={modIndex === 0} style={[styles.arrowBtn, modIndex === 0 && styles.arrowDisabled]}>
+              <Text style={styles.arrowText}>‹</Text>
+            </TouchableOpacity>
+
+            <View style={{ alignItems: 'center' }}>
+              <Text style={styles.moduleTitle}>{moduloActual}</Text>
+              {pendientesModuloCount > 0 && (
+                <Text style={styles.moduleSub}>
+                  {pendientesModuloCount} pendiente{pendientesModuloCount !== 1 ? 's' : ''} de retirar
+                </Text>
+              )}
+            </View>
+
+            <TouchableOpacity
+              onPress={nextModulo}
+              disabled={modIndex >= modulos.length - 1}
+              style={[styles.arrowBtn, (modIndex >= modulos.length - 1) && styles.arrowDisabled]}
+            >
+              <Text style={styles.arrowText}>›</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Grid */}
+          {loadingModulos || loadingTornillos ? (
+            <ActivityIndicator size="large" style={{ marginTop: 24 }} />
+          ) : error ? (
+            <Text style={styles.error}>{error}</Text>
+          ) : (
+            renderGrid()
+          )}
+
+          {modulos.length > 0 && (
+            <Text style={styles.pagination}>
+              {modIndex + 1} / {modulos.length}
             </Text>
           )}
         </View>
 
-        <TouchableOpacity onPress={nextModulo} disabled={modIndex >= modulos.length - 1} style={[styles.arrowBtn, (modIndex >= modulos.length - 1) && styles.arrowDisabled]}>
-          <Text style={styles.arrowText}>›</Text>
-        </TouchableOpacity>
-      </View>
-
-      {loadingModulos || loadingTornillos ? (
-        <ActivityIndicator size="large" style={{ marginTop: 24 }} />
-      ) : error ? (
-        <Text style={styles.error}>{error}</Text>
-      ) : (
-        renderGrid()
-      )}
-
-      {modulos.length > 0 && (
-        <Text style={styles.pagination}>
-          {modIndex + 1} / {modulos.length}
-        </Text>
-      )}
-    </ScrollView>
+        <View style={{ height: 16 }} />
+        <Text style={styles.footer}>Mercadona · Caducados · {new Date().getFullYear()}</Text>
+        <View style={{ height: 20 }} />
+      </ScrollView>
+    </View>
   );
 }
 
-const screenWidth = Dimensions.get('window').width;
+const MAX_W = 860
+const CELL_IMG = 60;
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    backgroundColor: '#fff',
-    alignItems: 'center',
+  screen: { flex: 1, backgroundColor: UI.bg },
+  container: { padding: 20, alignItems: 'center', backgroundColor: UI.bg },
+
+  /* App bar */
+  appBar: {
+    width: '100%', maxWidth: MAX_W, backgroundColor: UI.card, borderRadius: 16,
+    borderWidth: 1, borderColor: UI.border, padding: 14, marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: Platform.OS === 'web' ? 0.06 : 0.12,
+    shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2,
   },
-  header: {
-    width: screenWidth - 40,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  appBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  backBtn: {
+    width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: UI.border,
+    alignItems: 'center', justifyContent: 'center',
   },
+  backIcon: { width: 22, height: 22, resizeMode: 'contain' },
+  appBarTitle: { fontSize: 20, fontWeight: '800', color: UI.text },
+  appBarSub: { marginTop: 2, color: UI.sub, fontSize: 12 },
+
+  /* Card contenedora del módulo y grid */
+  card: {
+    width: '100%', maxWidth: MAX_W, backgroundColor: UI.card, borderRadius: 16,
+    borderWidth: 1, borderColor: UI.border, padding: 14, marginTop: 12,
+    shadowColor: '#000',
+    shadowOpacity: Platform.OS === 'web' ? 0.05 : 0.1,
+    shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1,
+  },
+
+  moduleHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  moduleTitle: { fontSize: 18, fontWeight: '800', color: UI.text },
+  moduleSub: { marginTop: 2, color: UI.red, fontSize: 12 },
+
   arrowBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 44, height: 44, borderRadius: 12, borderWidth: 1, borderColor: UI.border,
+    alignItems: 'center', justifyContent: 'center',
   },
   arrowDisabled: { opacity: 0.35 },
-  arrowText: { fontSize: 28, lineHeight: 28 },
-  title: {
-    flexShrink: 1,
-    fontSize: 20,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginVertical: 12,
-  },
+  arrowText: { fontSize: 24, lineHeight: 24, color: UI.sub },
+
+  /* Grid */
   row: {
     flexDirection: 'row',
-    width: screenWidth - 40,
+    width: '100%',
     marginBottom: 10,
     justifyContent: 'center',
+    gap: 8,
   },
   cell: {
+    minHeight: 100,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 4,
-    height: 100,
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    backgroundColor: '#eef',
+    gap: 12,
     padding: 10,
+    borderWidth: 1,
+    borderColor: UI.border,
+    borderRadius: 12,
+    backgroundColor: UI.card,
   },
   image: {
-    width: 60,
-    height: 60,
+    width: CELL_IMG,
+    height: CELL_IMG,
     resizeMode: 'contain',
-    marginRight: 0,
   },
-  textContainer: {
-    height: 60,
-    marginLeft: 12,
-    justifyContent: 'space-between',
+
+  /* Columna de 3 líneas con altura fija */
+  infoCol: {
+    height: CELL_IMG,                 // clave: igual que la imagen
+    justifyContent: 'space-between',  // reparte en 3 “líneas”
     alignItems: 'flex-start',
-    flexShrink: 1,
   },
-  codigo: { fontSize: 14, fontWeight: 'bold' },
-  nombre: { fontSize: 14 },
+  codigo: { fontSize: 14, fontWeight: '800', color: UI.text },
+
+  nameLine: {
+    flexGrow: 1,
+    justifyContent: 'center',         // centra el nombre en su “línea”
+    width: '100%',
+  },
+  nombre: { fontSize: 14, color: UI.text },
+
   statusBall: {
     width: 14,
     height: 14,
     borderRadius: 7,
-    marginTop: 6,
   },
-  error: { color: 'crimson', marginTop: 16 },
-  empty: { marginTop: 16, color: '#666' },
-  pagination: { marginTop: 12, color: '#666' },
+
+  error: { color: UI.red, marginTop: 16, textAlign: 'center' },
+  pagination: { marginTop: 12, color: UI.sub, textAlign: 'center' },
+  empty: { marginTop: 8, color: UI.sub, textAlign: 'center' },
+
+  footer: { color: UI.sub, fontSize: 12, textAlign: 'center' },
 });

@@ -116,7 +116,7 @@ export default function HomeScreen() {
             <Image source={require('@/assets/images/search.png')} style={styles.icon} />
             <View style={styles.rowTextWrap}>
               <Text style={styles.rowText}>Revisar</Text>
-              <Text style={styles.rowSub}>Explora familias y cámaras</Text>
+              <Text style={styles.rowSub}>Revisa cámaras por familias</Text>
             </View>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>

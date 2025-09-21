@@ -1,14 +1,40 @@
-import { View, Text, StyleSheet, ScrollView, Image, TextInput, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
+// app/retirar.tsx
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Image,
+  TextInput,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  Platform,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState, useCallback } from 'react';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
+
+/* ===== UI ===== */
+const UI = {
+  bg: '#FFFFFF',
+  card: '#FFFFFF',
+  border: '#E5E7EB',
+  text: '#111827',
+  sub: '#6B7280',
+  greenBrand: '#0F8A2F',
+  dotGreen: '#2ecc71',
+  dotOrange: '#ff9800',
+  dotRed: '#E11D48',
+  dotGray: '#9e9e9e',
+};
 
 type TornilloDTO = {
   id: number;
   productoCodigo: number;
   tiendaId: number;
-  fechaCaducidad: string | null;
+  fechaCaducidad: string | null; // "YYYY-MM-DD" o ISO
   fechaRetirada: string | null;
   nombreModulo: string;
   fila: number;
@@ -37,12 +63,12 @@ const daysBetween = (a: Date, b: Date) => {
 };
 
 const getStatusColor = (fecha: string | null) => {
-  if (!fecha) return '#9e9e9e'; // gris
+  if (!fecha) return UI.dotGray;
   const today = startOfDay(new Date());
   const f = startOfDay(parseYMD(fecha));
-  if (f.getTime() > today.getTime()) return '#2ecc71';   // verde
-  if (f.getTime() === today.getTime()) return '#ff9800'; // naranja
-  return '#e74c3c';                                       // rojo
+  if (f.getTime() > today.getTime()) return UI.dotGreen;   // verde
+  if (f.getTime() === today.getTime()) return UI.dotOrange; // naranja
+  return UI.dotRed;                                         // rojo
 };
 
 const isPast = (s?: string | null) => {
@@ -85,7 +111,7 @@ export default function RetirarScreen() {
         modulos.map(m => {
           const moduloEnc = encodeURIComponent(m);
           const url = `${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/familia/${famEnc}/modulo/${moduloEnc}?ts=${Date.now()}`;
-          return fetch(url).then(r => r.ok ? r.json() : []);
+          return fetch(url).then(r => (r.ok ? r.json() : []));
         })
       );
 
@@ -126,10 +152,9 @@ export default function RetirarScreen() {
     }
   }, [current?.id]);
 
-  /* ===== RETIRADA "EN VIVO" como en /tornillo/[id].tsx ===== */
+  /* ===== RETIRADA "EN VIVO" ===== */
 
-  // 0) Días efectivos de caducidad: preferimos `caducidadDias` del backend;
-  //    si no viene, lo deducimos (fechaCaducidad - fechaRetirada)
+  // 0) Días efectivos de caducidad
   const diasEfectivos = useMemo<number | null>(() => {
     if (!current) return null;
     if (current.caducidadDias != null) return current.caducidadDias;
@@ -162,7 +187,7 @@ export default function RetirarScreen() {
 
   // 2) Color de la bola por retirada
   const statusColor = useMemo(
-    () => (retiradaDate ? getStatusColor(toYMD(retiradaDate)) : '#9e9e9e'),
+    () => (retiradaDate ? getStatusColor(toYMD(retiradaDate)) : UI.dotGray),
     [retiradaDate]
   );
 
@@ -193,7 +218,6 @@ export default function RetirarScreen() {
       });
       if (!res.ok) throw new Error(`Error ${res.status} guardando fecha`);
 
-      // Quitamos el actual sin mover el puntero (para no saltar el siguiente)
       const newList = items.filter((_, i) => i !== index);
 
       if (newList.length === 0) {
@@ -219,128 +243,187 @@ export default function RetirarScreen() {
     }
   };
 
-  // Saltar: NO guarda en backend; quita el actual y pasa al siguiente sin saltarse ninguno
-const skipCurrent = () => {
-  if (!current) return;
+  // Saltar: elimina el actual y muestra el siguiente (sin guardar)
+  const skipCurrent = () => {
+    if (!current) return;
 
-  // Elimina el item actual
-  const newList = items.filter((_, i) => i !== index);
+    const newList = items.filter((_, i) => i !== index);
 
-  // Si no quedan elementos: mensaje y volver atrás
-  if (newList.length === 0) {
-    const msg = 'No quedan productos pendientes.';
-    if (Platform.OS === 'web') {
-      window.alert(msg);
-      router.back();
-    } else {
-      Alert.alert('Completado', msg, [{ text: 'OK', onPress: () => router.back() }]);
+    if (newList.length === 0) {
+      const msg = 'No quedan productos pendientes.';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+        router.back();
+      } else {
+        Alert.alert('Lista vacía', msg, [{ text: 'OK', onPress: () => router.back() }]);
+      }
+      return;
     }
-    return;
+
+    const newIndex = Math.min(index, newList.length - 1);
+    setItems(newList);
+    setIndex(newIndex);
+    const next = newList[newIndex];
+    setFechaCad(next?.fechaCaducidad ? next.fechaCaducidad.slice(0, 10) : toYMD(new Date()));
+  };
+
+  /* ===== Early returns para evitar nulls ===== */
+  if (loading) return <View style={styles.center}><ActivityIndicator size="large" /></View>;
+  if (error) return <View style={styles.center}><Text style={styles.error}>{error}</Text></View>;
+  if (!current) {
+    return (
+      <View style={styles.center}>
+        <Text style={{ marginBottom: 12 }}>No hay productos pendientes.</Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => router.back()}>
+          <Text style={styles.primaryTxt}>Volver</Text>
+        </TouchableOpacity>
+      </View>
+    );
   }
 
-  // Calcula el nuevo índice: apunta al que era "el siguiente"
-  const newIndex = Math.min(index, newList.length - 1);
-
-  // Aplica el estado
-  setItems(newList);
-  setIndex(newIndex);
-
-  // Ajusta el input de fecha para el nuevo current (opcional, tu useEffect ya lo hace)
-  const next = newList[newIndex];
-  setFechaCad(next?.fechaCaducidad ? next.fechaCaducidad.slice(0, 10) : toYMD(new Date()));
-};
-
+  // 👇 current garantizado a partir de aquí: ya no hay errores con imagenUrl
   const imgSrc = current.imagenUrl
     ? `${API_BASE_URL}${current.imagenUrl}`
     : `${API_BASE_URL}/images/productos/${current.productoCodigo}.png`;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Encabezado */}
-      <Text style={styles.h1}>Retirar pendientes</Text>
-      <Text style={styles.h2}>{current.nombreModulo} | {current.familia}</Text>
-      <Text style={styles.sub}>Elemento {numero} de {total}</Text>
-
-      {/* Tarjeta */}
-      <View style={styles.card}>
-        <Image style={styles.bigImg} source={{ uri: imgSrc }} />
-        <View style={[styles.dot, { backgroundColor: statusColor }]} />
-
-        <Text style={styles.codigo}>{current.productoCodigo}</Text>
-        <Text style={styles.nombre}>{current.nombre}</Text>
-
-        <View style={styles.rowBetween}>
-          <Text style={styles.fieldLabel}>Fecha de caducidad:</Text>
-          <TextInput
-            value={fechaCad}
-            onChangeText={setFechaCad}
-            placeholder="YYYY-MM-DD"
-            style={styles.dateInput}
-          />
+    <View style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.container}>
+        {/* App bar */}
+        <View style={styles.appBar}>
+          <View style={styles.appBarLeft}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backBtn}
+              activeOpacity={0.8}
+            >
+              <Image source={require('@/assets/images/back.png')} style={styles.backIcon} />
+            </TouchableOpacity>
+            <View>
+              <Text style={styles.appBarTitle}>Retirar pendientes</Text>
+              <Text style={styles.appBarSub}>
+                {current.nombreModulo} | {current.familia ?? 'Familia'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.badge}>{numero}/{total}</Text>
         </View>
 
-        <View style={styles.quickRow}>
-          <TouchableOpacity style={styles.chip} onPress={() => shiftDays(-1)}><Text>-1 día</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.chip} onPress={() => shiftDays(+1)}><Text>+1 día</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.chip} onPress={() => shiftDays(+7)}><Text>+7 días</Text></TouchableOpacity>
+        {/* Tarjeta */}
+        <View style={styles.card}>
+          <Image style={styles.bigImg} source={{ uri: imgSrc }} />
+          <View style={[styles.dot, { backgroundColor: statusColor }]} />
+
+          <Text style={styles.codigo}>{current.productoCodigo}</Text>
+          <Text style={styles.nombre}>{current.nombre}</Text>
+
+          <View style={styles.rowBetween}>
+            <Text style={styles.fieldLabel}>Fecha de caducidad:</Text>
+            <TextInput
+              value={fechaCad}
+              onChangeText={setFechaCad}
+              placeholder="YYYY-MM-DD"
+              style={styles.dateInput}
+            />
+          </View>
+
+          <View style={styles.quickRow}>
+            <TouchableOpacity style={styles.chip} onPress={() => shiftDays(-1)}><Text>-1 día</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.chip} onPress={() => shiftDays(+1)}><Text>+1 día</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.chip} onPress={() => shiftDays(+7)}><Text>+7 días</Text></TouchableOpacity>
+          </View>
+
+          <Text style={styles.meta}>R: {rDia}</Text>
+          <Text style={styles.meta}>Caducidad: {diasEfectivos ?? '-'} días</Text>
+
+          {/* Botones */}
+          <View style={styles.actionsRow}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={skipCurrent} disabled={saving}>
+              <Text style={styles.secondaryTxt}>Saltar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.primaryBtn} onPress={validateAndNext} disabled={saving}>
+              {saving ? <ActivityIndicator /> : <Text style={styles.primaryTxt}>Validar y siguiente</Text>}
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <Text style={styles.meta}>R: {rDia}</Text>
-        <Text style={styles.meta}>Caducidad: {diasEfectivos ?? '-'} días</Text>
-
-        {/* Botones */}
-        <View style={styles.actionsRow}>
-          <TouchableOpacity style={styles.secondaryBtn} onPress={skipCurrent} disabled={items.length <= 1 || saving}>
-            <Text style={styles.secondaryTxt}>Saltar</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.primaryBtn} onPress={validateAndNext} disabled={saving}>
-            {saving ? <ActivityIndicator /> : <Text style={styles.primaryTxt}>Validar y siguiente</Text>}
-          </TouchableOpacity>
-        </View>
-      </View>
-    </ScrollView>
+        <View style={{ height: 16 }} />
+        <Text style={styles.footer}>Mercadona · Caducados · {new Date().getFullYear()}</Text>
+        <View style={{ height: 20 }} />
+      </ScrollView>
+    </View>
   );
 }
 
+/* ===== Estilos ===== */
+const MAX_W = 860;
+
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 20 },
-  container: { padding: 20, alignItems: 'center', backgroundColor: '#fff' },
+  screen: { flex: 1, backgroundColor: UI.bg },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: UI.bg, padding: 20 },
 
-  h1: { fontSize: 22, fontWeight: 'bold', color: '#16a34a' },
-  h2: { fontSize: 16, fontWeight: '600', color: '#111', marginTop: 4 },
-  sub: { marginTop: 4, color: '#666' },
+  container: { padding: 20, alignItems: 'center', backgroundColor: UI.bg },
 
+  /* App bar */
+  appBar: {
+    width: '100%', maxWidth: MAX_W, backgroundColor: UI.card, borderRadius: 16,
+    borderWidth: 1, borderColor: UI.border, padding: 14, marginBottom: 16,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOpacity: Platform.OS === 'web' ? 0.06 : 0.12,
+    shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2,
+  },
+  appBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  backBtn: {
+    width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: UI.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  backIcon: { width: 22, height: 22, resizeMode: 'contain' },
+  appBarTitle: { fontSize: 20, fontWeight: '800', color: UI.text },
+  appBarSub: { marginTop: 2, color: UI.sub, fontSize: 12 },
+
+  badge: {
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
+    borderWidth: 1, borderColor: UI.border, color: UI.sub, fontWeight: '700',
+  },
+
+  /* Card */
   card: {
-    width: '100%', maxWidth: 560, backgroundColor: '#eef', borderRadius: 12,
-    padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#ddd', marginTop: 12,
+    width: '100%', maxWidth: MAX_W, backgroundColor: UI.card, borderRadius: 16,
+    borderWidth: 1, borderColor: UI.border, padding: 16, marginTop: 12, alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: Platform.OS === 'web' ? 0.05 : 0.1,
+    shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1,
   },
   bigImg: { width: 160, height: 160, resizeMode: 'contain', marginBottom: 8 },
   dot: { width: 16, height: 16, borderRadius: 8, marginBottom: 8 },
 
-  codigo: { fontSize: 18, fontWeight: 'bold', marginTop: 2 },
-  nombre: { fontSize: 16, textAlign: 'center', marginBottom: 12 },
+  codigo: { fontSize: 18, fontWeight: 'bold', marginTop: 2, color: UI.text },
+  nombre: { fontSize: 16, textAlign: 'center', marginBottom: 12, color: UI.text },
 
   rowBetween: { flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'space-between', marginTop: 8 },
-  fieldLabel: { fontWeight: 'bold' },
+  fieldLabel: { fontWeight: 'bold', color: UI.text },
   dateInput: {
-    backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 8, minWidth: 150, textAlign: 'center',
+    backgroundColor: '#fff', borderWidth: 1, borderColor: UI.border, borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 8, minWidth: 160, textAlign: 'center', color: UI.text,
   },
-  quickRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc' },
 
-  meta: { marginTop: 8, fontSize: 14 },
+  quickRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: UI.card, borderWidth: 1, borderColor: UI.border },
+
+  meta: { marginTop: 8, fontSize: 14, color: UI.sub },
 
   actionsRow: { flexDirection: 'row', gap: 10, width: '100%', marginTop: 14 },
   secondaryBtn: {
     flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: 'center',
-    borderWidth: 1, borderColor: '#ccc', backgroundColor: '#fff',
+    borderWidth: 1, borderColor: UI.border, backgroundColor: UI.card,
   },
-  secondaryTxt: { color: '#111', fontWeight: '600' },
+  secondaryTxt: { color: UI.text, fontWeight: '600' },
 
-  primaryBtn: { flex: 1, paddingVertical: 12, backgroundColor: '#16a34a', borderRadius: 8, alignItems: 'center' },
+  primaryBtn: { flex: 1, paddingVertical: 12, backgroundColor: UI.greenBrand, borderRadius: 8, alignItems: 'center' },
   primaryTxt: { color: '#fff', fontWeight: 'bold' },
 
-  error: { color: 'crimson' },
+  error: { color: UI.dotRed },
+  footer: { color: UI.sub, fontSize: 12, textAlign: 'center' },
 });
