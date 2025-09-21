@@ -123,7 +123,7 @@ export default function HomeScreen() {
 
           <View style={styles.divider} />
 
-          <TouchableOpacity style={styles.row} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.row} onPress={() => router.push('/ajustes')} activeOpacity={0.85}>
             <Image source={require('@/assets/images/settings.png')} style={styles.icon} />
             <View style={styles.rowTextWrap}>
               <Text style={styles.rowText}>Ajustes</Text>
