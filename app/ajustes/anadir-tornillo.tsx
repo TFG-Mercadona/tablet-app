@@ -1,7 +1,16 @@
 import React, { useEffect, useState } from "react";
 import {
-  View, Text, StyleSheet, Image, TouchableOpacity, ScrollView,
-  Platform, Dimensions, TextInput, ActivityIndicator, Alert,
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  ScrollView,
+  Platform,
+  Dimensions,
+  TextInput,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -43,7 +52,10 @@ export default function AnadirTornilloScreen() {
       return;
     }
     if (!productoCodigo || !familia || !nombreModulo || !fila || !columna) {
-      Alert.alert("Campos incompletos", "Rellena al menos: código, familia, módulo, fila y columna.");
+      Alert.alert(
+        "Campos incompletos",
+        "Rellena al menos: código, familia, módulo, fila y columna.",
+      );
       return;
     }
 
@@ -80,13 +92,23 @@ export default function AnadirTornilloScreen() {
     <View style={styles.screen}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={[styles.container, { minHeight: Dimensions.get("window").height }]}
+        contentContainerStyle={[
+          styles.container,
+          { minHeight: Dimensions.get("window").height },
+        ]}
       >
         {/* App bar */}
         <View style={styles.appBar}>
           <View style={styles.appBarLeft}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.8}>
-              <Image source={require("@/assets/images/back.png")} style={styles.backIcon} />
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backBtn}
+              activeOpacity={0.8}
+            >
+              <Image
+                source={require("@/assets/images/back.png")}
+                style={styles.backIcon}
+              />
             </TouchableOpacity>
             <View>
               <Text style={styles.appBarTitle}>Añadir tornillo</Text>
@@ -183,12 +205,18 @@ export default function AnadirTornilloScreen() {
             onPress={submit}
             disabled={loading}
           >
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryTxt}>Guardar</Text>}
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.primaryTxt}>Guardar</Text>
+            )}
           </TouchableOpacity>
         </View>
 
         <View style={{ height: 16 }} />
-        <Text style={styles.footer}>Mercadona · Caducados · {new Date().getFullYear()}</Text>
+        <Text style={styles.footer}>
+          Mercadona · Caducados · {new Date().getFullYear()}
+        </Text>
         <View style={{ height: 20 }} />
       </ScrollView>
     </View>
@@ -202,42 +230,78 @@ const styles = StyleSheet.create({
   container: { padding: 20, alignItems: "center", backgroundColor: UI.bg },
 
   appBar: {
-    width: "100%", maxWidth: MAX_W, backgroundColor: UI.card, borderRadius: 16,
-    borderWidth: 1, borderColor: UI.border, padding: 14, marginBottom: 16,
+    width: "100%",
+    maxWidth: MAX_W,
+    backgroundColor: UI.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: UI.border,
+    padding: 14,
+    marginBottom: 16,
     shadowColor: "#000",
     shadowOpacity: Platform.OS === "web" ? 0.06 : 0.12,
-    shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   appBarLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
   backBtn: {
-    width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: UI.border,
-    alignItems: "center", justifyContent: "center",
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: UI.border,
+    alignItems: "center",
+    justifyContent: "center",
   },
   backIcon: { width: 22, height: 22, resizeMode: "contain" },
   appBarTitle: { fontSize: 20, fontWeight: "800", color: UI.text },
   appBarSub: { marginTop: 2, color: UI.sub, fontSize: 12 },
 
   card: {
-    width: "100%", maxWidth: MAX_W, backgroundColor: UI.card, borderRadius: 16,
-    borderWidth: 1, borderColor: UI.border, padding: 14, marginTop: 12,
+    width: "100%",
+    maxWidth: MAX_W,
+    backgroundColor: UI.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: UI.border,
+    padding: 14,
+    marginTop: 12,
     shadowColor: "#000",
     shadowOpacity: Platform.OS === "web" ? 0.05 : 0.1,
-    shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
-  cardTitle: { fontSize: 16, fontWeight: "700", color: UI.text, marginBottom: 8 },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: UI.text,
+    marginBottom: 8,
+  },
 
   field: { marginBottom: 10 },
   label: { color: UI.sub, fontSize: 12, marginBottom: 4 },
   input: {
-    backgroundColor: "#fff", borderWidth: 1, borderColor: UI.border, borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: UI.text,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: UI.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: UI.text,
   },
 
   row2: { flexDirection: "row", alignItems: "flex-start", marginBottom: 10 },
 
   primaryBtn: {
-    marginTop: 8, width: "100%", paddingVertical: 12, backgroundColor: UI.green,
-    borderRadius: 10, alignItems: "center",
+    marginTop: 8,
+    width: "100%",
+    paddingVertical: 12,
+    backgroundColor: UI.green,
+    borderRadius: 10,
+    alignItems: "center",
   },
   primaryTxt: { color: "#fff", fontWeight: "bold" },
 
