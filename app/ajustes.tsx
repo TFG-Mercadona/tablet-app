@@ -100,7 +100,7 @@ export default function AjustesScreen() {
           
           <View style={styles.divider} />
 
-          <TouchableOpacity style={styles.row} activeOpacity={0.85} onPress={() => go('/planograma')}>
+          <TouchableOpacity style={styles.row} activeOpacity={0.85} onPress={() => go('/planogramas')}>
             <Image source={require('@/assets/images/planograma.png')} style={styles.icon} />
             <View style={styles.rowTextWrap}>
               <Text style={styles.rowText}>Planogramas</Text>
