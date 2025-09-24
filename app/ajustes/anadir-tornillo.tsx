@@ -26,6 +26,23 @@ const UI = {
   green: "#0F8A2F",
 };
 
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+
+/** Helper: alert cross-platform (nativo y web) */
+function showAlert(
+  title: string,
+  message: string,
+  onOk?: () => void
+) {
+  if (Platform.OS === "web") {
+    window.alert((title ? title + "\n\n" : "") + message);
+    onOk?.();
+  } else {
+    Alert.alert(title, message, [{ text: "OK", onPress: onOk }]);
+  }
+}
+
 export default function AnadirTornilloScreen() {
   const router = useRouter();
   const [tiendaId, setTiendaId] = useState<string | null>(null);
@@ -48,41 +65,38 @@ export default function AnadirTornilloScreen() {
 
   const submit = async () => {
     if (!tiendaId) {
-      Alert.alert("Falta tienda", "No se pudo leer tiendaId.");
+      showAlert("Falta tienda", "No se pudo leer tiendaId.");
       return;
     }
     if (!productoCodigo || !familia || !nombreModulo || !fila || !columna) {
-      Alert.alert(
+      showAlert(
         "Campos incompletos",
-        "Rellena al menos: código, familia, módulo, fila y columna.",
+        "Rellena al menos: código, familia, módulo, fila y columna."
       );
       return;
     }
 
     try {
       setLoading(true);
-      // TODO: conecta con tu endpoint de alta. Ejemplo comentado:
-      // const res = await fetch(`${API_BASE_URL}/api/tornillos`, {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({
-      //     tiendaId: Number(tiendaId),
-      //     productoCodigo: Number(productoCodigo),
-      //     familia,
-      //     nombreModulo,
-      //     fila: Number(fila),
-      //     columna: Number(columna),
-      //     fechaCaducidad: fechaCaducidad || null,
-      //     caducidadDias: caducidadDias ? Number(caducidadDias) : null
-      //   }),
-      // });
-      // if (!res.ok) throw new Error(`Error ${res.status}`);
+      const res = await fetch(`${API_BASE_URL}/api/tornillos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tiendaId: Number(tiendaId),
+          productoCodigo: Number(productoCodigo),
+          familia,
+          nombreModulo,
+          fila: Number(fila),
+          columna: Number(columna),
+          fechaCaducidad: fechaCaducidad || null,
+          caducidadDias: caducidadDias ? Number(caducidadDias) : null,
+        }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
 
-      Alert.alert("Guardado", "Tornillo añadido correctamente.", [
-        { text: "OK", onPress: () => router.back() },
-      ]);
+      showAlert("Guardado", "Tornillo añadido correctamente.", () => router.back());
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo guardar.");
+      showAlert("Error", e?.message ?? "No se pudo guardar.");
     } finally {
       setLoading(false);
     }

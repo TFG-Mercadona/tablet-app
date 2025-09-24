@@ -30,6 +30,16 @@ const API_BASE_URL =
 
 const isYMD = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
 
+/** Helper: alert cross-platform (nativo y web) */
+function showAlert(title: string, message: string, onOk?: () => void) {
+  if (Platform.OS === "web") {
+    window.alert((title ? title + "\n\n" : "") + message);
+    onOk?.();
+  } else {
+    Alert.alert(title, message, [{ text: "OK", onPress: onOk }]);
+  }
+}
+
 export default function EditarTornilloScreen() {
   const router = useRouter();
   const [tiendaId, setTiendaId] = useState<string | null>(null);
@@ -41,7 +51,7 @@ export default function EditarTornilloScreen() {
   const [currentId, setCurrentId] = useState<number | null>(null);
 
   // Datos mostrados / editables
-  const [familia, setFamilia] = useState("");            // informativo (no editable)
+  const [familia, setFamilia] = useState(""); // informativo (no editable)
   const [nombreModulo, setNombreModulo] = useState("");
   const [fila, setFila] = useState("");
   const [columna, setColumna] = useState("");
@@ -57,7 +67,7 @@ export default function EditarTornilloScreen() {
 
   const buscar = async () => {
     if (!tiendaId || !codigoBuscar) {
-      Alert.alert("Atención", "Introduce tienda y código de producto.");
+      showAlert("Atención", "Introduce tienda y código de producto.");
       return;
     }
     try {
@@ -78,7 +88,7 @@ export default function EditarTornilloScreen() {
       setFechaCaducidad(dto.fechaCaducidad ? dto.fechaCaducidad.slice(0, 10) : "");
       setCaducidadDias(dto.caducidadDias != null ? String(dto.caducidadDias) : "");
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo cargar el tornillo.");
+      showAlert("Error", e?.message ?? "No se pudo cargar el tornillo.");
       setCurrentId(null);
     } finally {
       setBuscando(false);
@@ -87,13 +97,13 @@ export default function EditarTornilloScreen() {
 
   const guardar = async () => {
     if (!currentId) {
-      Alert.alert("Atención", "Primero carga un tornillo con el buscador.");
+      showAlert("Atención", "Primero carga un tornillo con el buscador.");
       return;
     }
 
     // Validaciones suaves
     if (fechaCaducidad && !isYMD(fechaCaducidad)) {
-      Alert.alert("Formato de fecha", "Usa el formato YYYY-MM-DD.");
+      showAlert("Formato de fecha", "Usa el formato YYYY-MM-DD.");
       return;
     }
 
@@ -103,7 +113,7 @@ export default function EditarTornilloScreen() {
     if (fila.trim()) {
       const n = Number(fila);
       if (!Number.isInteger(n) || n <= 0) {
-        Alert.alert("Fila inválida", "Introduce un número entero positivo.");
+        showAlert("Fila inválida", "Introduce un número entero positivo.");
         return;
       }
       body.fila = n;
@@ -111,7 +121,7 @@ export default function EditarTornilloScreen() {
     if (columna.trim()) {
       const n = Number(columna);
       if (!Number.isInteger(n) || n <= 0) {
-        Alert.alert("Columna inválida", "Introduce un número entero positivo.");
+        showAlert("Columna inválida", "Introduce un número entero positivo.");
         return;
       }
       body.columna = n;
@@ -120,14 +130,14 @@ export default function EditarTornilloScreen() {
     if (caducidadDias.trim()) {
       const n = Number(caducidadDias);
       if (!Number.isInteger(n) || n < 0) {
-        Alert.alert("Caducidad (días)", "Introduce un entero igual o mayor que 0.");
+        showAlert("Caducidad (días)", "Introduce un entero igual o mayor que 0.");
         return;
       }
       body.caducidadDias = n;
     }
 
     if (Object.keys(body).length === 0) {
-      Alert.alert("Nada que guardar", "No has cambiado ningún campo.");
+      showAlert("Nada que guardar", "No has cambiado ningún campo.");
       return;
     }
 
@@ -143,14 +153,9 @@ export default function EditarTornilloScreen() {
         throw new Error(`Error (${res.status}) ${txt || ""}`);
       }
 
-      // Opcional: refrescar con el DTO devuelto
-      // const dto = await res.json();
-
-      Alert.alert("Guardado", "Cambios aplicados correctamente.", [
-        { text: "OK", onPress: () => router.back() },
-      ]);
+      showAlert("Guardado", "Cambios aplicados correctamente.", () => router.back());
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo guardar.");
+      showAlert("Error", e?.message ?? "No se pudo guardar.");
     } finally {
       setGuardando(false);
     }

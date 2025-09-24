@@ -28,6 +28,30 @@ const UI = {
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
+/** Alert cross-platform (web + nativo) */
+function showAlert(title: string, message: string, onOk?: () => void) {
+  if (Platform.OS === "web") {
+    window.alert((title ? title + "\n\n" : "") + message);
+    onOk?.();
+  } else {
+    Alert.alert(title, message, [{ text: "OK", onPress: onOk }]);
+  }
+}
+
+/** Confirm cross-platform: devuelve promesa boolean */
+function showConfirm(title: string, message: string): Promise<boolean> {
+  if (Platform.OS === "web") {
+    const ok = window.confirm((title ? title + "\n\n" : "") + message);
+    return Promise.resolve(ok);
+  }
+  return new Promise((resolve) => {
+    Alert.alert(title, message, [
+      { text: "Cancelar", style: "cancel", onPress: () => resolve(false) },
+      { text: "Eliminar", style: "destructive", onPress: () => resolve(true) },
+    ]);
+  });
+}
+
 export default function EliminarTornilloScreen() {
   const router = useRouter();
   const [tiendaId, setTiendaId] = useState<string | null>(null);
@@ -43,28 +67,35 @@ export default function EliminarTornilloScreen() {
 
   const eliminar = async () => {
     if (!tiendaId || !codigo) {
-      Alert.alert("Atención", "Introduce tienda y código de producto.");
+      showAlert("Atención", "Introduce tienda y código de producto.");
       return;
     }
+
+    const ok = await showConfirm(
+      "Confirmación",
+      `¿Seguro que quieres eliminar el control del producto ${codigo}?`
+    );
+    if (!ok) return;
+
     try {
       setLoading(true);
 
       // 1) Resolver id del tornillo por tienda+producto
       const res0 = await fetch(
-        `${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/producto/${codigo}`,
+        `${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/producto/${codigo}`
       );
       if (!res0.ok) throw new Error("No se pudo localizar el tornillo.");
       const dto = await res0.json();
 
-      // 2) Llamada de borrado (AJUSTA al endpoint real que tengas)
-      // const res = await fetch(`${API_BASE_URL}/api/tornillos/${dto.id}`, { method: "DELETE" });
-      // if (!res.ok) throw new Error(`Error eliminando (${res.status})`);
+      // 2) Borrado
+      const res = await fetch(`${API_BASE_URL}/api/tornillos/${dto.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(`Error eliminando (${res.status})`);
 
-      Alert.alert("Eliminado", "Tornillo eliminado del control.", [
-        { text: "OK", onPress: () => router.back() },
-      ]);
+      showAlert("Eliminado", "Tornillo eliminado del control.", () => router.back());
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "No se pudo eliminar.");
+      showAlert("Error", e?.message ?? "No se pudo eliminar.");
     } finally {
       setLoading(false);
     }
