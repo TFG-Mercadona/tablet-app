@@ -1,5 +1,5 @@
 // app/planogramas/view.tsx
-import React from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ if (Platform.OS !== "web") {
     // requiere: expo install react-native-webview
     // @ts-ignore
     WebView = require("react-native-webview").WebView;
-  } catch (e) {
+  } catch {
     WebView = null;
   }
 }
@@ -36,6 +36,13 @@ export default function PlanogramaView() {
     familia?: string;
     tiendaId?: string;
   }>();
+
+  // En web: intenta abrir automáticamente en pestaña nueva al entrar
+  useEffect(() => {
+    if (Platform.OS === "web" && url) {
+      window.open(String(url), "_blank", "noopener,noreferrer");
+    }
+  }, [url]);
 
   return (
     <View style={styles.screen}>
@@ -64,8 +71,15 @@ export default function PlanogramaView() {
       <View style={styles.viewerCard}>
         {Platform.OS === "web" ? (
           <Text style={{ color: UI.sub }}>
-            En web abrimos el PDF en una pestaña nueva. Si no se abrió, vuelve
-            atrás y pulsa de nuevo.
+            Se ha intentado abrir el PDF en una pestaña nueva. Si tu navegador
+            lo ha bloqueado,{" "}
+            <Text
+              style={{ fontWeight: "700", textDecorationLine: "underline" }}
+              onPress={() => window.open(String(url), "_blank", "noopener,noreferrer")}
+            >
+              pulsa aquí para abrirlo manualmente
+            </Text>
+            .
           </Text>
         ) : WebView ? (
           <WebView
@@ -75,8 +89,7 @@ export default function PlanogramaView() {
           />
         ) : (
           <Text style={{ color: UI.sub }}>
-            Falta instalar{" "}
-            <Text style={{ fontWeight: "700" }}>react-native-webview</Text>.
+            Falta instalar <Text style={{ fontWeight: "700" }}>react-native-webview</Text>.
           </Text>
         )}
       </View>

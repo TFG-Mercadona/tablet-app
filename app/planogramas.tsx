@@ -16,8 +16,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
-const planogramaUrl = (tiendaId: string, familia: string) =>
-  `${API_BASE_URL}/api/planogramas/tienda/${encodeURIComponent(tiendaId)}/familia/${encodeURIComponent(familia)}/pdf`;
+
+// <-- CORREGIDO: el controlador es /api/planogramas/{familia}
+const planogramaUrl = (familia: string) =>
+  `${API_BASE_URL}/api/planogramas/${encodeURIComponent(familia)}`;
 
 const UI = {
   bg: "#FFFFFF",
@@ -52,22 +54,24 @@ export default function PlanogramasIndex() {
   }, []);
 
   const openPlanograma = async (familia: string) => {
-    if (!tiendaId) return;
-    const url = planogramaUrl(tiendaId, familia);
+    // <-- CORREGIDO: construir URL con la familia
+    const url = planogramaUrl(familia);
 
     if (Platform.OS === "web") {
-      // Web: nueva pestaña
+      // Web: pestaña nueva
       window.open(url, "_blank", "noopener,noreferrer");
       return;
     }
 
-    // Nativo: intenta abrir con visor externo; si no, usa nuestro visor interno
-    const can = await Linking.canOpenURL(url);
-    if (can) {
-      try {
+    // Nativo: visor externo si es posible; si no, visor interno
+    try {
+      const can = await Linking.canOpenURL(url);
+      if (can) {
         await Linking.openURL(url);
         return;
-      } catch {}
+      }
+    } catch {
+      // caemos a visor interno
     }
     router.push({
       pathname: "/planogramas/view",
