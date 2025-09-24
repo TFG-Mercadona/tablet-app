@@ -22,10 +22,13 @@ const UI = {
   text: "#111827",
   sub: "#6B7280",
   green: "#0F8A2F",
+  red: "#E11D48",
 };
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+
+const isYMD = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
 
 export default function EditarTornilloScreen() {
   const router = useRouter();
@@ -35,7 +38,10 @@ export default function EditarTornilloScreen() {
   const [guardando, setGuardando] = useState(false);
 
   const [codigoBuscar, setCodigoBuscar] = useState("");
-  const [familia, setFamilia] = useState("");
+  const [currentId, setCurrentId] = useState<number | null>(null);
+
+  // Datos mostrados / editables
+  const [familia, setFamilia] = useState("");            // informativo (no editable)
   const [nombreModulo, setNombreModulo] = useState("");
   const [fila, setFila] = useState("");
   const [columna, setColumna] = useState("");
@@ -56,57 +62,91 @@ export default function EditarTornilloScreen() {
     }
     try {
       setBuscando(true);
-      // ejemplo real de carga al DTO de detalle:
+
+      // Carga DTO por tienda + producto (tiene id de Tornillo)
       const res = await fetch(
-        `${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/producto/${codigoBuscar}`,
+        `${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/producto/${codigoBuscar}`
       );
       if (!res.ok) throw new Error(`No encontrado (${res.status})`);
       const dto = await res.json();
 
+      setCurrentId(dto.id ?? null);
       setFamilia(dto.familia ?? "");
       setNombreModulo(dto.nombreModulo ?? "");
-      setFila(String(dto.fila ?? ""));
-      setColumna(String(dto.columna ?? ""));
-      setFechaCaducidad(
-        dto.fechaCaducidad ? dto.fechaCaducidad.slice(0, 10) : "",
-      );
-      setCaducidadDias(
-        dto.caducidadDias != null ? String(dto.caducidadDias) : "",
-      );
+      setFila(dto.fila != null ? String(dto.fila) : "");
+      setColumna(dto.columna != null ? String(dto.columna) : "");
+      setFechaCaducidad(dto.fechaCaducidad ? dto.fechaCaducidad.slice(0, 10) : "");
+      setCaducidadDias(dto.caducidadDias != null ? String(dto.caducidadDias) : "");
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "No se pudo cargar el tornillo.");
+      setCurrentId(null);
     } finally {
       setBuscando(false);
     }
   };
 
   const guardar = async () => {
-    if (!tiendaId || !codigoBuscar) return;
+    if (!currentId) {
+      Alert.alert("Atención", "Primero carga un tornillo con el buscador.");
+      return;
+    }
+
+    // Validaciones suaves
+    if (fechaCaducidad && !isYMD(fechaCaducidad)) {
+      Alert.alert("Formato de fecha", "Usa el formato YYYY-MM-DD.");
+      return;
+    }
+
+    // Construir payload solo con los campos presentes
+    const body: any = {};
+    if (nombreModulo.trim()) body.nombreModulo = nombreModulo.trim();
+    if (fila.trim()) {
+      const n = Number(fila);
+      if (!Number.isInteger(n) || n <= 0) {
+        Alert.alert("Fila inválida", "Introduce un número entero positivo.");
+        return;
+      }
+      body.fila = n;
+    }
+    if (columna.trim()) {
+      const n = Number(columna);
+      if (!Number.isInteger(n) || n <= 0) {
+        Alert.alert("Columna inválida", "Introduce un número entero positivo.");
+        return;
+      }
+      body.columna = n;
+    }
+    if (fechaCaducidad.trim()) body.fechaCaducidad = fechaCaducidad.trim();
+    if (caducidadDias.trim()) {
+      const n = Number(caducidadDias);
+      if (!Number.isInteger(n) || n < 0) {
+        Alert.alert("Caducidad (días)", "Introduce un entero igual o mayor que 0.");
+        return;
+      }
+      body.caducidadDias = n;
+    }
+
+    if (Object.keys(body).length === 0) {
+      Alert.alert("Nada que guardar", "No has cambiado ningún campo.");
+      return;
+    }
+
     try {
       setGuardando(true);
-      // 1) Obtener id por tienda+producto para editar (si tu backend lo requiere)
-      const res0 = await fetch(
-        `${API_BASE_URL}/api/tornillos/dto/tienda/${tiendaId}/producto/${codigoBuscar}`,
-      );
-      if (!res0.ok) throw new Error("No se pudo resolver el tornillo.");
-      const dto = await res0.json();
-
-      // 2) Guardar fecha de caducidad (ejemplo ya existente)
-      if (fechaCaducidad) {
-        const res = await fetch(
-          `${API_BASE_URL}/api/tornillos/${dto.id}/fecha-caducidad`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fechaCaducidad }),
-          },
-        );
-        if (!res.ok) throw new Error(`Error guardando fecha (${res.status})`);
+      const res = await fetch(`${API_BASE_URL}/api/tornillos/editar/${currentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(`Error (${res.status}) ${txt || ""}`);
       }
 
-      // 3) TODO: si quieres, otro endpoint para mover módulo/fila/columna, caducidadDias, etc.
+      // Opcional: refrescar con el DTO devuelto
+      // const dto = await res.json();
 
-      Alert.alert("Guardado", "Cambios aplicados.", [
+      Alert.alert("Guardado", "Cambios aplicados correctamente.", [
         { text: "OK", onPress: () => router.back() },
       ]);
     } catch (e: any) {
@@ -145,6 +185,7 @@ export default function EditarTornilloScreen() {
           <View style={{ width: 32 }} />
         </View>
 
+        {/* Buscar */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Buscar</Text>
 
@@ -165,7 +206,7 @@ export default function EditarTornilloScreen() {
                 keyboardType="numeric"
                 value={codigoBuscar}
                 onChangeText={setCodigoBuscar}
-                placeholder="Ej: 123456"
+                placeholder="Ej: 10644"
               />
             </View>
             <View style={{ width: 16 }} />
@@ -186,15 +227,16 @@ export default function EditarTornilloScreen() {
           </View>
         </View>
 
+        {/* Editar */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Editar datos</Text>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Familia</Text>
+            <Text style={styles.label}>Familia (informativo)</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: "#f9fafb" }]}
               value={familia}
-              onChangeText={setFamilia}
+              editable={false}
               placeholder="Familia"
             />
           </View>
@@ -217,6 +259,7 @@ export default function EditarTornilloScreen() {
                 value={fila}
                 onChangeText={setFila}
                 keyboardType="numeric"
+                placeholder="p.ej. 2"
               />
             </View>
             <View style={{ width: 12 }} />
@@ -227,6 +270,7 @@ export default function EditarTornilloScreen() {
                 value={columna}
                 onChangeText={setColumna}
                 keyboardType="numeric"
+                placeholder="p.ej. 5"
               />
             </View>
           </View>
@@ -249,6 +293,7 @@ export default function EditarTornilloScreen() {
                 value={caducidadDias}
                 onChangeText={setCaducidadDias}
                 keyboardType="numeric"
+                placeholder="p.ej. 7"
               />
             </View>
           </View>
