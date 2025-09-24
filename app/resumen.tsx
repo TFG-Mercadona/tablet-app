@@ -1,20 +1,13 @@
-// app/resumen.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  Image,
-  TouchableOpacity,
-  ScrollView,
-  Platform,
-  ActivityIndicator,
-  Alert,
+  View, Text, StyleSheet, Image, TouchableOpacity, ScrollView,
+  Platform, ActivityIndicator, Alert
 } from "react-native";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
+import * as FileSystem from "expo-file-system";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 const fetchResumenUrl = (tiendaId: string, familia?: string) =>
@@ -41,7 +34,7 @@ type CambioRow = {
   fechaNueva: string | null;
   contrastado?: boolean | null;
   nombre?: string | null;
-  imagenUrl?: string | null;
+  imagenUrl?: string | null; // puede venir absoluta o relativa
 };
 
 export default function ResumenScreen() {
@@ -94,11 +87,16 @@ export default function ResumenScreen() {
       showAlert("Sin datos", "Hoy no hay cambios registrados.");
       return;
     }
-    const html = buildHtml(grouped);
+
     try {
+      // Para nativo: incrustamos imágenes en base64 (evita CORS/HTTP/localhost)
+      let html: string;
       if (Platform.OS === "web") {
+        html = buildHtml(grouped, (r) => getImgUrl(r)); // web: dejamos URL absoluta
         await Print.printAsync({ html });
       } else {
+        const withDataImages = await embedImagesAsDataUri(grouped);
+        html = buildHtml(withDataImages, (r) => r.imagenUrl || ""); // ya vienen en data URI
         const { uri } = await Print.printToFileAsync({ html });
         await Sharing.shareAsync(uri, { dialogTitle: "Compartir resumen (PDF)" });
       }
@@ -144,30 +142,36 @@ export default function ResumenScreen() {
             grouped.map(([fam, list]) => (
               <View key={fam} style={{ marginBottom: 16 }}>
                 <Text style={styles.famHeader}>— {fam} —</Text>
-                {list.map((r, idx) => (
-                  <View key={`${r.productoCodigo}-${idx}`} style={styles.row}>
-                    <Image
-                      style={styles.thumb}
-                      source={{ uri: r.imagenUrl || `${API_BASE_URL}/images/productos/${r.productoCodigo}.png` }}
-                    />
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.rowTitle} numberOfLines={1}>
-                        {r.productoCodigo} {r.nombre ? `· ${r.nombre}` : ""}
-                      </Text>
-                      <Text style={styles.rowSub}>
-                        Anterior: {r.fechaAnterior || "-"} · Actual: {r.fechaNueva || "-"}
-                      </Text>
+                {list.map((r, idx) => {
+                  const uri = getImgUrl(r);
+                  return (
+                    <View key={`${r.productoCodigo}-${idx}`} style={styles.row}>
+                      <Image
+                        style={styles.thumb}
+                        source={{ uri }}
+                        onError={() => {
+                          // opcional: podrías setear un estado para este item si quieres mostrar placeholder
+                        }}
+                      />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.rowTitle} numberOfLines={1}>
+                          {r.productoCodigo} {r.nombre ? `· ${r.nombre}` : ""}
+                        </Text>
+                        <Text style={styles.rowSub}>
+                          Anterior: {r.fechaAnterior || "-"} · Actual: {r.fechaNueva || "-"}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.badge,
+                          (r.contrastado ?? false) ? styles.badgeOk : styles.badgeKo,
+                        ]}
+                      >
+                        <Text style={styles.badgeText}>{(r.contrastado ?? false) ? "Contrastado" : "No contrastado"}</Text>
+                      </View>
                     </View>
-                    <View
-                      style={[
-                        styles.badge,
-                        (r.contrastado ?? false) ? styles.badgeOk : styles.badgeKo,
-                      ]}
-                    >
-                      <Text style={styles.badgeText}>{(r.contrastado ?? false) ? "Contrastado" : "No contrastado"}</Text>
-                    </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             ))
           )}
@@ -182,6 +186,40 @@ export default function ResumenScreen() {
 }
 
 /* ---------------- helpers ---------------- */
+
+// Normaliza la URL de imagen: si viene relativa o vacía, construye absoluta contra el backend.
+// OJO: en dispositivos físicos, evita "localhost": usa una IP accesible en tu red.
+function getImgUrl(r: CambioRow) {
+  const raw = r.imagenUrl && r.imagenUrl.trim().length > 0
+    ? r.imagenUrl.trim()
+    : `/images/productos/${r.productoCodigo}.png`;
+
+  if (raw.startsWith("data:")) return raw;
+  if (/^https?:\/\//i.test(raw)) return raw;     // ya es absoluta (http/https)
+  if (raw.startsWith("/")) return `${API_BASE_URL}${raw}`;
+  return `${API_BASE_URL}/${raw}`;
+}
+
+// Para PDF nativo: descarga cada imagen y la convierte a data URI
+async function embedImagesAsDataUri(groups: [string, CambioRow[]][]) {
+  const cloned: [string, CambioRow[]][] = JSON.parse(JSON.stringify(groups));
+
+  for (const [, list] of cloned) {
+    await Promise.all(list.map(async (r) => {
+      const url = getImgUrl(r);
+      try {
+        const file = `${FileSystem.cacheDirectory}${r.productoCodigo}.png`;
+        const { uri } = await FileSystem.downloadAsync(url, file);
+        const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+        r.imagenUrl = `data:image/png;base64,${b64}`;
+      } catch {
+        // si falla, deja sin imagen
+        r.imagenUrl = `data:image/png;base64,`; // vacío → no rompe el HTML
+      }
+    }));
+  }
+  return cloned;
+}
 
 function mapRow(x: any): CambioRow {
   return {
@@ -200,7 +238,10 @@ function mapRow(x: any): CambioRow {
   };
 }
 
-function buildHtml(groups: [string, CambioRow[]][]) {
+function buildHtml(
+  groups: [string, CambioRow[]][],
+  getUrl: (r: CambioRow) => string
+) {
   const css = `
   body { font-family: Arial, sans-serif; color: #111827; }
   h1 { font-size: 20px; margin: 0 0 12px 0; }
@@ -215,18 +256,14 @@ function buildHtml(groups: [string, CambioRow[]][]) {
   .no { background:#FEE2E2; color:#991B1B; }
   `;
   const sections = groups.map(([fam, list]) => {
-    const rows = list
-      .map(
-        (r) => `
+    const rows = list.map((r) => `
       <tr>
-        <td><img class="img" src="${r.imagenUrl || `${API_BASE_URL}/images/productos/${r.productoCodigo}.png`}" /></td>
+        <td><img class="img" src="${getUrl(r)}" /></td>
         <td>${r.productoCodigo}${r.nombre ? ` · ${escapeHtml(r.nombre)}` : ""}</td>
         <td>${r.fechaAnterior ?? "-"}</td>
         <td>${r.fechaNueva ?? "-"}</td>
         <td><span class="badge ${r.contrastado ? "ok" : "no"}">${r.contrastado ? "Sí" : "No"}</span></td>
-      </tr>`
-      )
-      .join("");
+      </tr>`).join("");
     return `
       <div class="fam">
         <h2>—— ${escapeHtml(fam)} ——</h2>
@@ -263,11 +300,8 @@ function escapeHtml(s: string) {
 }
 
 function showAlert(title: string, msg: string) {
-  if (Platform.OS === "web") {
-    window.alert(`${title}: ${msg}`);
-  } else {
-    Alert.alert(title, msg);
-  }
+  if (Platform.OS === "web") window.alert(`${title}: ${msg}`);
+  else Alert.alert(title, msg);
 }
 
 /* ---------------- styles ---------------- */
